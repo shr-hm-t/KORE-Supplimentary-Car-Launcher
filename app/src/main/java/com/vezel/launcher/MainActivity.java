@@ -74,6 +74,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.TimeZone;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -97,6 +99,11 @@ public class MainActivity extends Activity {
 
     private MapHost host;
     static boolean fancy = false;
+    private boolean night = true;
+    private int cText = Color.WHITE, cSub = 0xFF9BA1A8, cGlyph = 0xFFF2F5F8, cLine = 0xFF3A3F45;
+    private int cPipBg = 0xFF050607, cPanel = 0xFF0B0C0D, cMidTop = 0xFF16181B, cMidBot = 0xFF050607;
+    private int cInfoBg = 0xB8000000, cRing = 0xFFE2E8EC, cRingFill = 0xFF15171A;
+    private long lastThemeCheck = 0, lastLocSave = 0;
     private LocationManager lm;
     private boolean locationStarted = false;
     private float scale = 1f;
@@ -135,6 +142,8 @@ public class MainActivity extends Activity {
         c.setTileFileSystemCacheMaxBytes(1500L * 1024 * 1024);
         c.setTileFileSystemCacheTrimBytes(1200L * 1024 * 1024);
         c.setExpirationOverrideDuration(1000L * 60 * 60 * 24 * 60); // keep tiles 60 days
+        night = computeNight();
+        initTheme();
         buildUi();
         requestPerms();
 
@@ -233,6 +242,74 @@ public class MainActivity extends Activity {
         return super.onKeyDown(keyCode, event);
     }
 
+    // ------------------------------------------------------------------ day / night
+
+    /** True when the dark look should be used. Light mode only ever follows the clock or the sun, never forced. */
+    private boolean computeNight() {
+        int mode = cfg.getInt("theme", 0);
+        if (mode == 2) return true;
+        long ms = System.currentTimeMillis();
+        if (mode == 0 && cfg.contains("lat")) {
+            double[] sun = sunTimes(cfg.getFloat("lat", 0f), cfg.getFloat("lon", 0f));
+            if (sun == null) return !sunUp; // polar day or polar night
+            double nowMin = (ms / 60000L) % 1440;
+            double a = ((sun[0] % 1440) + 1440) % 1440;
+            double b = ((sun[1] % 1440) + 1440) % 1440;
+            boolean day = a < b ? (nowMin >= a && nowMin < b) : (nowMin >= a || nowMin < b);
+            return !day;
+        }
+        // fixed hours (also the fallback for automatic mode before the first GPS fix)
+        Calendar c = Calendar.getInstance();
+        int hour = c.get(Calendar.HOUR_OF_DAY);
+        int dayStart = cfg.getInt("dayStart", 6);
+        int nightStart = cfg.getInt("nightStart", 18);
+        boolean day = dayStart < nightStart ? (hour >= dayStart && hour < nightStart)
+                : (hour >= dayStart || hour < nightStart);
+        return !day;
+    }
+
+    private boolean sunUp = false;
+
+    /** Sunrise and sunset as minutes after midnight UTC, or null near the poles. */
+    private double[] sunTimes(double lat, double lon) {
+        Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+        int n = cal.get(Calendar.DAY_OF_YEAR);
+        double g = 2 * Math.PI / 365.0 * (n - 1);
+        double eqt = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g)
+                - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
+        double decl = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g)
+                - 0.006758 * Math.cos(2 * g) + 0.000907 * Math.sin(2 * g)
+                - 0.002697 * Math.cos(3 * g) + 0.00148 * Math.sin(3 * g);
+        double latR = Math.toRadians(lat);
+        double cosH = Math.cos(Math.toRadians(90.833)) / (Math.cos(latR) * Math.cos(decl))
+                - Math.tan(latR) * Math.tan(decl);
+        if (cosH > 1) {
+            sunUp = false;
+            return null;
+        }
+        if (cosH < -1) {
+            sunUp = true;
+            return null;
+        }
+        double ha = Math.toDegrees(Math.acos(cosH));
+        return new double[]{720 - 4 * (lon + ha) - eqt, 720 - 4 * (lon - ha) - eqt};
+    }
+
+    private void initTheme() {
+        if (night) return; // defaults above are the dark theme
+        cText = 0xFF14171A;
+        cSub = 0xFF4A5057;
+        cGlyph = 0xFF14171A;
+        cLine = 0xFF8E959B;
+        cPipBg = 0xFFE4E7EA;
+        cPanel = 0xFFF1F3F5;
+        cMidTop = 0xFFEDEFF1;
+        cMidBot = 0xFFD3D7DB;
+        cInfoBg = 0xCCF5F7F8;
+        cRing = 0xFF3A3F45;
+        cRingFill = 0xFFF1F3F5;
+    }
+
     private void applyStatusBar() {
         boolean show = cfg.getBoolean("showStatus", false);
         Window w = getWindow();
@@ -257,6 +334,14 @@ public class MainActivity extends Activity {
         @Override
         public void run() {
             recentre();
+            long nowT = System.currentTimeMillis();
+            if (nowT - lastThemeCheck > 30000) {
+                lastThemeCheck = nowT;
+                if (computeNight() != night) {
+                    recreate();
+                    return;
+                }
+            }
             if (ytPane != null && ytPane.getVisibility() == View.VISIBLE) refreshYt();
             handler.postDelayed(this, 2000);
         }
@@ -339,7 +424,7 @@ public class MainActivity extends Activity {
             File mfile = new File(mf);
             if (mf.length() > 0 && mfile.exists()) {
                 try {
-                    host = new MapsforgeHost(this, mfile, touch);
+                    host = new MapsforgeHost(this, mfile, touch, night);
                 } catch (Throwable t) {
                     Toast.makeText(this, "The offline map file could not be opened, using the online map", Toast.LENGTH_LONG).show();
                 }
@@ -349,7 +434,7 @@ public class MainActivity extends Activity {
         } else if (engine == 2) {
             host = new NoMapHost(this, touch);
         }
-        if (host == null) host = new OsmHost(this, touch);
+        if (host == null) host = new OsmHost(this, touch, night);
         top.addView(host.view(), new FrameLayout.LayoutParams(-1, -1));
 
         // YouTube thumbnail pane (replaces the map when switched on)
@@ -388,21 +473,21 @@ public class MainActivity extends Activity {
         // navigation + city panel (sharp, flush left)
         LinearLayout info = new LinearLayout(this);
         info.setOrientation(LinearLayout.VERTICAL);
-        info.setBackgroundColor(0xB8000000);
+        info.setBackgroundColor(cInfoBg);
         info.setPadding(dp(18), dp(14), dp(12), dp(10));
         navArrow = new ImageView(this);
         info.addView(navArrow, new LinearLayout.LayoutParams(dp(96), dp(96)));
-        navTitle = text(30, Color.WHITE, true);
-        navText = text(20, 0xFFC4CAD0, false);
+        navTitle = text(30, cText, true);
+        navText = text(20, cSub, false);
         info.addView(navTitle);
         info.addView(navText);
         View spacer = new View(this);
         info.addView(spacer, new LinearLayout.LayoutParams(1, 0, 1f));
-        cityText = text(30, Color.WHITE, true);
-        subText = text(16, GREY, false);
+        cityText = text(30, cText, true);
+        subText = text(16, cSub, false);
         info.addView(cityText);
         info.addView(subText);
-        hintText = text(13, 0xFFD0D6DC, false);
+        hintText = text(13, cSub, false);
         hintText.setText("Tap here to enable navigation info");
         hintText.setPadding(0, dp(8), 0, 0);
         hintText.setOnClickListener(new View.OnClickListener() {
@@ -420,10 +505,10 @@ public class MainActivity extends Activity {
         LinearLayout mid = new LinearLayout(this);
         mid.setOrientation(LinearLayout.HORIZONTAL);
         mid.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{0xFF16181B, 0xFF050607}));
+                new int[]{cMidTop, cMidBot}));
 
         FrameLayout pip = new FrameLayout(this);
-        pip.setBackgroundColor(0xFF050607);
+        pip.setBackgroundColor(cPipBg);
         LinearLayout tg = new LinearLayout(this);
         tg.setOrientation(LinearLayout.VERTICAL);
         tg.setGravity(Gravity.CENTER);
@@ -434,7 +519,7 @@ public class MainActivity extends Activity {
             row.setGravity(Gravity.CENTER);
             for (int k = 0; k < 2; k++) {
                 int idx = r * 2 + k;
-                TextView t = text(26, WHITE, true);
+                TextView t = text(26, cText, true);
                 t.setGravity(Gravity.CENTER);
                 t.setText(names[idx] + "  --");
                 tyre[idx] = t;
@@ -564,7 +649,7 @@ public class MainActivity extends Activity {
             GradientDrawable rim = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
                     new int[]{0xFFF0F0ED, 0xFFA9AAAB, 0xFF414345, 0xFF171819, 0xFFBFC0BE, 0xFF656769});
             GradientDrawable panel = new GradientDrawable();
-            panel.setColor(0xFF0B0C0D);
+            panel.setColor(cPanel);
             LayerDrawable ld = new LayerDrawable(new Drawable[]{rim, panel});
             int in = Math.max(1, dp(1));
             ld.setLayerInset(1, in, in, in, in);
@@ -572,7 +657,7 @@ public class MainActivity extends Activity {
         } else {
             GradientDrawable g = new GradientDrawable();
             g.setColor(0x00000000);
-            g.setStroke(1, LINE);
+            g.setStroke(1, cLine);
             f.setBackground(g);
         }
         f.setClickable(true);
@@ -582,6 +667,7 @@ public class MainActivity extends Activity {
     private FrameLayout iconCell(int glyph, View.OnClickListener click, View.OnLongClickListener lc) {
         FrameLayout f = cell();
         Glyph g = new Glyph(this, glyph);
+        g.setColor(cGlyph);
         f.addView(g, new FrameLayout.LayoutParams(dp(72), dp(72), Gravity.CENTER));
         f.setOnClickListener(click);
         if (lc != null) f.setOnLongClickListener(lc);
@@ -601,13 +687,13 @@ public class MainActivity extends Activity {
         FrameLayout f = cell();
         TextView c = new TextView(this);
         c.setGravity(Gravity.CENTER);
-        c.setTextColor(WHITE);
+        c.setTextColor(cText);
         c.setTextSize(30 * scale);
         c.setTypeface(Typeface.DEFAULT_BOLD);
         GradientDrawable ring = new GradientDrawable();
         ring.setShape(GradientDrawable.OVAL);
-        ring.setColor(0xFF15171A);
-        ring.setStroke(dp(2), CHROME);
+        ring.setColor(cRingFill);
+        ring.setStroke(dp(2), cRing);
         c.setBackground(ring);
         f.addView(c, new FrameLayout.LayoutParams(dp(72), dp(72), Gravity.CENTER));
         contactInitial[i] = c;
@@ -685,6 +771,11 @@ public class MainActivity extends Activity {
         public void onLocationChanged(Location loc) {
             if (loc == null) return;
             lastLoc = loc;
+            long tNow = System.currentTimeMillis();
+            if (tNow - lastLocSave > 600000) {
+                lastLocSave = tNow;
+                cfg.edit().putFloat("lat", (float) loc.getLatitude()).putFloat("lon", (float) loc.getLongitude()).apply();
+            }
             host.setCar(loc.getLatitude(), loc.getLongitude());
             float kmh = loc.hasSpeed() ? loc.getSpeed() * 3.6f : 0f;
             setLight(kmh);
@@ -1227,6 +1318,20 @@ public class MainActivity extends Activity {
         modeG.check(3000 + cfg.getInt("mode", 0));
         l.addView(modeG);
 
+        heading(l, "Appearance (day and night)");
+        final RadioGroup thG = new RadioGroup(this);
+        String[] thNames = {"Automatic: dark from sunset to sunrise", "Fixed hours (set below)", "Always dark"};
+        for (int k = 0; k < 3; k++) {
+            RadioButton rb = new RadioButton(this);
+            rb.setText(thNames[k]);
+            rb.setId(7000 + k);
+            thG.addView(rb);
+        }
+        thG.check(7000 + cfg.getInt("theme", 0));
+        l.addView(thG);
+        final EditText dayStart = numField(l, "Light mode starts at hour (0-23)", cfg.getInt("dayStart", 6));
+        final EditText nightStart = numField(l, "Dark mode starts at hour (0-23)", cfg.getInt("nightStart", 18));
+
         heading(l, "Apps");
         final Button radioBtn = new Button(this);
         radioBtn.setText("Radio app: " + appLabel(radioPkg[0]));
@@ -1311,6 +1416,10 @@ public class MainActivity extends Activity {
         floating.setText("Floating mute / home button");
         floating.setChecked(cfg.getBoolean("floating", true));
         l.addView(floating);
+        final CheckBox lock = new CheckBox(this);
+        lock.setText("Lock floating button position");
+        lock.setChecked(cfg.getBoolean("floatLock", false));
+        l.addView(lock);
         final EditText corner = numField(l, "Screen corner roundness in dp (0 = square)", cfg.getInt("corner", 30));
         final EditText margin = numField(l, "Black edge margin in dp (0 = none)", cfg.getInt("margin", 6));
         final EditText ui = numField(l, "UI size in percent (100 = normal, try 80 to 130)", cfg.getInt("uiScale", 100));
@@ -1387,6 +1496,8 @@ public class MainActivity extends Activity {
                         if (md < 0 || md > 1) md = 0;
                         int or = og.getCheckedRadioButtonId() - 4000;
                         if (or < 0 || or > 2) or = 0;
+                        int th = thG.getCheckedRadioButtonId() - 7000;
+                        if (th < 0 || th > 2) th = 0;
                         int me = mapG.getCheckedRadioButtonId() - 5000;
                         if (me < 0 || me > 2) me = 0;
                         int fc = colG.getCheckedRadioButtonId() - 6000;
@@ -1398,6 +1509,10 @@ public class MainActivity extends Activity {
                                 .putInt("voiceMode", vm)
                                 .putString("wheelMacro", wheelMacro.getText().toString().trim())
                                 .putInt("mapEngine", me)
+                                .putInt("theme", th)
+                                .putInt("dayStart", Math.max(0, Math.min(23, intOf(dayStart, 6))))
+                                .putInt("nightStart", Math.max(0, Math.min(23, intOf(nightStart, 18))))
+                                .putBoolean("floatLock", lock.isChecked())
                                 .putInt("floatColor", fc)
                                 .putInt("mode", md)
                                 .putInt("callMode", m)
@@ -1759,4 +1874,4 @@ public class MainActivity extends Activity {
             c.restore();
         }
     }
-    }
+            }
