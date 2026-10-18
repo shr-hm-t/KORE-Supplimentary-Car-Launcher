@@ -19,7 +19,8 @@ Built and tested on a Honda Vezel (2025) with a Nakamichi NAM5850 aftermarket un
 - **YouTube widget:** swaps the map for the current video's thumbnail and title.
 - **App picker and drawer:** choose your radio and 360-camera apps from a list. No package names to type.
 - **Radio tile:** tap to open your radio app.
-- **Floating mute and home buttons:** two neon buttons that float over every app and can be dragged. Colour choice: white, red, blue or green. Needs the "display over other apps" permission.
+- **Floating mute and home buttons:** two neon buttons that float over every app and can be dragged. Colour choice: white, red, blue or green, with an optional position lock. Needs the "display over other apps" permission.
+- **Day and night:** the launcher and the map go light by day and dark by night. Automatic mode uses sunrise and sunset worked out from the GPS (no internet), or you can set fixed hours, or stay always dark. Light is never forced.
 - **Two looks:** a welcome screen on first start lets you choose Functional (plain black and chrome) or Fancy (chrome-rimmed tiles and thin line icons). Switch any time in settings.
 - **Tyre-pressure slot:** placeholder, waiting for real data.
 - **Display options:**
@@ -72,7 +73,7 @@ Everything stays on the device. With the offline map option, the area name looku
 
 - Fancy-theme icons are adapted from a design package generated with ChatGPT and GoogleAI, and the layout and look were guided by the owner's designs.
 - Idea, design direction, hardware testing and feedback: the project owner.
-- Code, build setup, UI design iterations and this documentation: written with [Claude](https://claude.ai) (Anthropic), under the owner's direction.
+- Code, build setup, UI design iterations and documentation: written with [Claude](https://claude.ai) (Anthropic), under the owner's direction.
 
 Map data © OpenStreetMap contributors. Maps by [osmdroid](https://github.com/osmdroid/osmdroid).
 
