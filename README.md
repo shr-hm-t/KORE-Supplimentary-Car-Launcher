@@ -9,19 +9,22 @@ Built and tested on a Honda Vezel (2025) with a Nakamichi NAM5850 aftermarket un
 ## Features
 
 - **Live map:** dark, greyscale and low-detail (OpenStreetMap via osmdroid). It re-centres on the car after 10 seconds without a touch and never opens another app when tapped.
-- **Offline map:** download the area around you once, then use it without internet.
+- **Three map options:** OpenStreetMap (online, tiles are cached as you drive), a fully offline Mapsforge `.map` file you download once (for example from OpenAndroMaps or mapsforge.org), or no map at all (navigation stays in the Google Maps app).
 - **Turn-by-turn info:** reads the Google Maps (also Waze and OsmAnd) navigation notification and shows the turn arrow and instruction in large text.
 - **Place name:** city and area from OpenStreetMap (Nominatim).
 - **Destination search:** hold the Map button, search, and start navigation in Google Maps.
 - **Speed light:** a glow on the top edge of the map turns yellow at 80 km/h and red at 120 km/h. No speed number is shown.
 - **One-tap calls:** three contact tiles. Choose direct call (Bluetooth or SIM), open the dial screen, or send a broadcast to a macro app such as MacroDroid.
-- **Steering-wheel voice button:** can call your primary contact, depending on what the button sends.
+- **Steering-wheel voice button:** calls your primary contact, or opens a voice assistant app you choose (for example Google or Gemini), depending on what the button sends.
 - **YouTube widget:** swaps the map for the current video's thumbnail and title.
 - **App picker and drawer:** choose your radio and 360-camera apps from a list. No package names to type.
-- **Radio tile:** tap to mute or unmute, hold to open the radio.
+- **Radio tile:** tap to open your radio app.
+- **Floating mute and home buttons:** two neon buttons that float over every app and can be dragged. Colour choice: white, red, blue or green. Needs the "display over other apps" permission.
+- **Two looks:** a welcome screen on first start lets you choose Functional (plain black and chrome) or Fancy (chrome-rimmed tiles and thin line icons). Switch any time in settings.
 - **Tyre-pressure slot:** placeholder, waiting for real data.
 - **Display options:**
-  - Software rounded screen corners with adjustable radius.
+  - Software rounded screen corners (three corners, bottom-left square) with an adjustable radius and a thin pure-black edge margin.
+  - UI size percentage and landscape, portrait or automatic orientation, so it can be tried on other devices.
   - Optional status bar with a black background.
 
 ## Install
@@ -37,7 +40,7 @@ Built and tested on a Honda Vezel (2025) with a Nakamichi NAM5850 aftermarket un
 
 | Control | Tap | Hold |
 |---|---|---|
-| Radio tile | Mute / unmute | Open radio |
+| Radio tile | Open radio | Settings |
 | Previous, Play, Next | Media keys (Play also unmutes) | none |
 | 360 tile | Open 360 app | Settings |
 | Contact tile | Call | Edit contact, set primary |
@@ -57,17 +60,20 @@ Stack: plain Android Views, Java 17, AGP 8.5.2, osmdroid 6.1.18, min SDK 23.
 - Media keys do not control many radio apps. Head-unit radios often ignore Android media sessions.
 - The YouTube thumbnail depends on what the YouTube app shares. It may show only the title.
 - Starting the radio from the background may be blocked on newer Android versions.
-- Offline download uses OpenStreetMap's public tile server. Keep downloads small and personal, and follow the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/). For heavy use, host your own tiles.
+- The online map uses OpenStreetMap's public tile server. Follow the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/), and use the offline map file for heavy or fully private use. Bulk tile downloading is not supported.
+- The offline map uses the default Mapsforge style, filtered to greyscale. A calmer custom style is a future idea. Offline place search is not available yet.
 - Only the Google Maps, Waze and OsmAnd notifications are read for navigation info.
 
 ## Privacy
 
-Everything stays on the device. The only network requests are map tiles and place lookups to OpenStreetMap (location coordinates are sent for the lookup). There is no analytics and no account.
+Everything stays on the device. With the offline map option, the area name lookup and destination search are the only network requests, and you can avoid them by not using those features. With the online map, tile requests and place lookups go to OpenStreetMap (your coordinates are sent for the lookup). There is no analytics and no account.
 
 ## Credits
 
+- Fancy-theme icons are adapted from a design package generated with ChatGPT, and the layout and look were guided by the owner's designs.
 - Idea, design direction, hardware testing and feedback: the project owner.
 - Code, build setup, UI design iterations and documentation: written with [Claude](https://claude.ai) (Anthropic), under the owner's direction.
+
 Map data © OpenStreetMap contributors. Maps by [osmdroid](https://github.com/osmdroid/osmdroid).
 
 ## License
