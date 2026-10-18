@@ -7,12 +7,15 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
     <application
         android:allowBackup="false"
+        android:requestLegacyExternalStorage="true"
         android:label="Vezel Launcher"
         android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
         android:usesCleartextTraffic="false">
@@ -35,13 +38,22 @@
             android:name=".AssistActivity"
             android:exported="true"
             android:excludeFromRecents="true"
+            android:label="Vezel Call"
             android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.ASSIST" />
                 <action android:name="android.intent.action.VOICE_COMMAND" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".FloatingService"
+            android:exported="false" />
 
         <service
             android:name=".NavListener"
