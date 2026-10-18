@@ -87,7 +87,8 @@ public class FloatingService extends Service {
                     case MotionEvent.ACTION_MOVE:
                         float dx = e.getRawX() - downX;
                         float dy = e.getRawY() - downY;
-                        if (Math.abs(dx) > dp(8) || Math.abs(dy) > dp(8)) moved = true;
+                        boolean locked = cfg.getBoolean("floatLock", false);
+                        if (!locked && (Math.abs(dx) > dp(8) || Math.abs(dy) > dp(8))) moved = true;
                         if (moved) {
                             lp.x = startX + (int) dx;
                             lp.y = startY + (int) dy;
@@ -187,4 +188,4 @@ public class FloatingService extends Service {
         } catch (Exception ignored) {
         }
     }
-}
+            }
