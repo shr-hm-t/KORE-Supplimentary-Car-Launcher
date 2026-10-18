@@ -8,20 +8,21 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.ColorMatrix;
-import android.graphics.ColorMatrixColorFilter;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.LayerDrawable;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -32,6 +33,7 @@ import android.media.session.MediaSessionManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
@@ -61,17 +63,12 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.osmdroid.config.Configuration;
 import org.osmdroid.config.IConfigurationProvider;
-import org.osmdroid.tileprovider.cachemanager.CacheManager;
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory;
-import org.osmdroid.util.BoundingBox;
-import org.osmdroid.util.GeoPoint;
-import org.osmdroid.views.CustomZoomButtonsController;
-import org.osmdroid.views.MapView;
-import org.osmdroid.views.overlay.TilesOverlay;
-import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider;
-import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -98,10 +95,12 @@ public class MainActivity extends Activity {
     private SharedPreferences cfg;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
-    private MapView map;
-    private MyLocationNewOverlay locOverlay;
+    private MapHost host;
+    static boolean fancy = false;
     private LocationManager lm;
     private boolean locationStarted = false;
+    private float scale = 1f;
+    private boolean welcomeShown = false;
     private Location lastLoc;
     private long lastTouch = 0;
 
@@ -124,6 +123,12 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         cfg = getSharedPreferences("cfg", MODE_PRIVATE);
+        fancy = cfg.getInt("mode", 0) == 1;
+        scale = Math.max(0.6f, Math.min(1.6f, cfg.getInt("uiScale", 100) / 100f));
+        int orient = cfg.getInt("orient", 0);
+        setRequestedOrientation(orient == 1 ? ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                : orient == 2 ? ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                : ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         IConfigurationProvider c = Configuration.getInstance();
         c.load(this, getSharedPreferences("osm", MODE_PRIVATE));
         c.setUserAgentValue(getPackageName());
@@ -165,7 +170,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         applyStatusBar();
-        map.onResume();
+        host.onResume();
         NavListener.onChange = new Runnable() {
             @Override
             public void run() {
@@ -188,14 +193,19 @@ public class MainActivity extends Activity {
 
         if (getIntent() != null && getIntent().getBooleanExtra("autocall", false)) {
             getIntent().removeExtra("autocall");
-            callContact(cfg.getInt("primary", 0));
+            wheelAction();
+        }
+        updateFloating();
+        if (!cfg.contains("mode") && !welcomeShown) {
+            welcomeShown = true;
+            showWelcome();
         }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        map.onPause();
+        host.onPause();
         NavListener.onChange = null;
         handler.removeCallbacks(ticker);
     }
@@ -204,6 +214,7 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         stopLocation();
+        if (host != null) host.onDestroy();
     }
 
     /** The back button must not restart the home screen. */
@@ -216,7 +227,7 @@ public class MainActivity extends Activity {
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         // steering wheel "voice" button
         if (keyCode == KeyEvent.KEYCODE_VOICE_ASSIST || keyCode == KeyEvent.KEYCODE_CALL) {
-            callContact(cfg.getInt("primary", 0));
+            wheelAction();
             return true;
         }
         return super.onKeyDown(keyCode, event);
@@ -253,13 +264,13 @@ public class MainActivity extends Activity {
 
     /** Re-centre the map on the car when nobody has touched it for 10 seconds. */
     private void recentre() {
-        if (lastLoc == null || map == null) return;
+        if (lastLoc == null || host == null) return;
         if (System.currentTimeMillis() - lastTouch < 10000) return;
-        GeoPoint gp = new GeoPoint(lastLoc.getLatitude(), lastLoc.getLongitude());
-        GeoPoint c = (GeoPoint) map.getMapCenter();
-        if (Math.abs(c.getLatitude() - gp.getLatitude()) > 0.00005
-                || Math.abs(c.getLongitude() - gp.getLongitude()) > 0.00005) {
-            map.getController().animateTo(gp);
+        double[] c = host.center();
+        if (c == null) return;
+        double la = lastLoc.getLatitude(), lo = lastLoc.getLongitude();
+        if (Math.abs(c[0] - la) > 0.00005 || Math.abs(c[1] - lo) > 0.00005) {
+            host.centerOn(la, lo);
         }
     }
 
@@ -269,7 +280,8 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 23) {
             requestPermissions(new String[]{
                     Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.CALL_PHONE}, 1);
+                    Manifest.permission.CALL_PHONE,
+                    Manifest.permission.READ_EXTERNAL_STORAGE}, 1);
         }
     }
 
@@ -286,7 +298,7 @@ public class MainActivity extends Activity {
     // ------------------------------------------------------------------ UI
 
     private int dp(float v) {
-        return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
+        return (int) (v * scale * getResources().getDisplayMetrics().density + 0.5f);
     }
 
     private LinearLayout.LayoutParams weight(float w, boolean horizontalParent) {
@@ -296,7 +308,7 @@ public class MainActivity extends Activity {
 
     private TextView text(int sp, int color, boolean bold) {
         TextView t = new TextView(this);
-        t.setTextSize(sp);
+        t.setTextSize(sp * scale);
         t.setTextColor(color);
         t.setShadowLayer(6, 0, 1, 0xFF000000);
         if (bold) t.setTypeface(Typeface.DEFAULT_BOLD);
@@ -313,36 +325,32 @@ public class MainActivity extends Activity {
 
         // ---------- top: live map with overlays
         FrameLayout top = new FrameLayout(this);
-        map = new MapView(this);
-        map.setTileSource(TileSourceFactory.MAPNIK);
-        map.setMultiTouchControls(true);
-        map.getZoomController().setVisibility(CustomZoomButtonsController.Visibility.NEVER);
-        map.getController().setZoom(16.0);
-        map.getController().setCenter(new GeoPoint(6.9271, 79.8612)); // Colombo until the first GPS fix
-        // dark + grey + slightly dimmed: calm, low-detail look, no blue/pink tint
-        ColorMatrix cm = new ColorMatrix(new float[]{
-                -1, 0, 0, 0, 255,
-                0, -1, 0, 0, 255,
-                0, 0, -1, 0, 255,
-                0, 0, 0, 1, 0});
-        ColorMatrix sat = new ColorMatrix();
-        sat.setSaturation(0f);
-        cm.postConcat(sat);
-        ColorMatrix dim = new ColorMatrix(new float[]{
-                0.75f, 0, 0, 0, -6,
-                0, 0.75f, 0, 0, -6,
-                0, 0, 0.75f, 0, -6,
-                0, 0, 0, 1, 0});
-        cm.postConcat(dim);
-        map.getOverlayManager().getTilesOverlay().setColorFilter(new ColorMatrixColorFilter(cm));
-        map.setOnTouchListener(new View.OnTouchListener() {
+        View.OnTouchListener touch = new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent e) {
                 lastTouch = System.currentTimeMillis();
                 return false;
             }
-        });
-        top.addView(map, new FrameLayout.LayoutParams(-1, -1));
+        };
+        int engine = cfg.getInt("mapEngine", 0);
+        host = null;
+        if (engine == 1) {
+            String mf = cfg.getString("mapFile", "");
+            File mfile = new File(mf);
+            if (mf.length() > 0 && mfile.exists()) {
+                try {
+                    host = new MapsforgeHost(this, mfile, touch);
+                } catch (Throwable t) {
+                    Toast.makeText(this, "The offline map file could not be opened, using the online map", Toast.LENGTH_LONG).show();
+                }
+            } else {
+                Toast.makeText(this, "No offline map file chosen yet, using the online map", Toast.LENGTH_LONG).show();
+            }
+        } else if (engine == 2) {
+            host = new NoMapHost(this, touch);
+        }
+        if (host == null) host = new OsmHost(this, touch);
+        top.addView(host.view(), new FrameLayout.LayoutParams(-1, -1));
 
         // YouTube thumbnail pane (replaces the map when switched on)
         ytPane = new FrameLayout(this);
@@ -451,20 +459,14 @@ public class MainActivity extends Activity {
         row1.setOrientation(LinearLayout.HORIZONTAL);
         row2.setOrientation(LinearLayout.HORIZONTAL);
 
-        // radio: tap = mute / unmute, hold = open radio
+        // radio: tap opens the radio app (mute lives on the floating button)
         FrameLayout radioCell = iconCell(Glyph.RADIO, new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                toggleMute();
-            }
-        }, new View.OnLongClickListener() {
-            @Override
-            public boolean onLongClick(View v) {
                 launchPref("pkgRadio");
-                return true;
             }
-        });
-        radioGlyph = (Glyph) radioCell.getChildAt(0);
+        }, settingsLongClick());
+        radioGlyph = null;
         row1.addView(radioCell, weight(1f, true));
         row1.addView(iconCell(Glyph.PREV, new View.OnClickListener() {
             @Override
@@ -511,7 +513,7 @@ public class MainActivity extends Activity {
         clock.setFormat24Hour("HH:mm");
         clock.setFormat12Hour("HH:mm");
         clock.setTextColor(WHITE);
-        clock.setTextSize(30);
+        clock.setTextSize(30 * scale);
         clock.setTypeface(Typeface.DEFAULT_BOLD);
         clock.setGravity(Gravity.CENTER);
         dock.addView(clock, weight(PIP_FRAC * 100f, true));
@@ -558,10 +560,21 @@ public class MainActivity extends Activity {
 
     private FrameLayout cell() {
         FrameLayout f = new FrameLayout(this);
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(0x00000000);
-        g.setStroke(1, LINE);
-        f.setBackground(g);
+        if (fancy) {
+            GradientDrawable rim = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                    new int[]{0xFFF0F0ED, 0xFFA9AAAB, 0xFF414345, 0xFF171819, 0xFFBFC0BE, 0xFF656769});
+            GradientDrawable panel = new GradientDrawable();
+            panel.setColor(0xFF0B0C0D);
+            LayerDrawable ld = new LayerDrawable(new Drawable[]{rim, panel});
+            int in = Math.max(1, dp(1));
+            ld.setLayerInset(1, in, in, in, in);
+            f.setBackground(ld);
+        } else {
+            GradientDrawable g = new GradientDrawable();
+            g.setColor(0x00000000);
+            g.setStroke(1, LINE);
+            f.setBackground(g);
+        }
         f.setClickable(true);
         return f;
     }
@@ -589,7 +602,7 @@ public class MainActivity extends Activity {
         TextView c = new TextView(this);
         c.setGravity(Gravity.CENTER);
         c.setTextColor(WHITE);
-        c.setTextSize(30);
+        c.setTextSize(30 * scale);
         c.setTypeface(Typeface.DEFAULT_BOLD);
         GradientDrawable ring = new GradientDrawable();
         ring.setShape(GradientDrawable.OVAL);
@@ -653,9 +666,7 @@ public class MainActivity extends Activity {
                 lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0, locListener);
             if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER))
                 lm.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 5000, 0, locListener);
-            locOverlay = new MyLocationNewOverlay(new GpsMyLocationProvider(this), map);
-            locOverlay.enableMyLocation(); // marker only, centring is handled by recentre()
-            map.getOverlays().add(locOverlay);
+            host.showCar(); // marker only, centring is handled by recentre()
             locationStarted = true;
         } catch (SecurityException e) {
             Toast.makeText(this, "Location permission needed", Toast.LENGTH_LONG).show();
@@ -674,6 +685,7 @@ public class MainActivity extends Activity {
         public void onLocationChanged(Location loc) {
             if (loc == null) return;
             lastLoc = loc;
+            host.setCar(loc.getLatitude(), loc.getLongitude());
             float kmh = loc.hasSpeed() ? loc.getSpeed() * 3.6f : 0f;
             setLight(kmh);
             recentre();
@@ -1108,9 +1120,94 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void wheelAction() {
+        int vm = cfg.getInt("voiceMode", 0);
+        String voice = cfg.getString("pkgVoice", "");
+        if (vm == 1 && voice.length() > 0) {
+            launchPackage(voice);
+        } else if (vm == 2) {
+            String action = cfg.getString("wheelMacro", "");
+            if (action.length() == 0) {
+                Toast.makeText(this, "Set the macro action for the wheel button in settings", Toast.LENGTH_LONG).show();
+            } else {
+                sendBroadcast(new Intent(action));
+            }
+        } else {
+            callContact(cfg.getInt("primary", 0));
+        }
+    }
+
+    private void updateFloating() {
+        boolean want = cfg.getBoolean("floating", true);
+        boolean can = Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(this);
+        Intent svc = new Intent(this, FloatingService.class);
+        try {
+            if (want && can) startService(svc);
+            else stopService(svc);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void askOverlayPermission() {
+        if (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this)) {
+            Toast.makeText(this, "Allow \"Display over other apps\" for the floating buttons", Toast.LENGTH_LONG).show();
+            try {
+                startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + getPackageName())));
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    private void showWelcome() {
+        new AlertDialog.Builder(this)
+                .setTitle("Welcome to Vezel Launcher")
+                .setMessage("Choose how it should look. You can change this any time in settings (gear icon).\n\n"
+                        + "Functional: the clean black and chrome look, ready to use now.\n"
+                        + "Fancy: chrome-rimmed tiles and thin line icons.")
+                .setCancelable(false)
+                .setPositiveButton("Functional", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface d, int w) {
+                        cfg.edit().putInt("mode", 0).apply();
+                        askOverlayPermission();
+                    }
+                })
+                .setNegativeButton("Fancy", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface d, int w) {
+                        cfg.edit().putInt("mode", 1).apply();
+                        askOverlayPermission();
+                        recreate();
+                    }
+                })
+                .show();
+    }
+
+    private EditText numField(LinearLayout parent, String hint, int value) {
+        return field(parent, hint, String.valueOf(value), InputType.TYPE_CLASS_NUMBER);
+    }
+
+    private int intOf(EditText e, int def) {
+        try {
+            return Integer.parseInt(e.getText().toString().trim());
+        } catch (Exception ex) {
+            return def;
+        }
+    }
+
+    private TextView heading(LinearLayout l, String t) {
+        TextView h = new TextView(this);
+        h.setText("\n" + t);
+        h.setTypeface(Typeface.DEFAULT_BOLD);
+        l.addView(h);
+        return h;
+    }
+
     private void editSettings() {
         final String[] radioPkg = {cfg.getString("pkgRadio", "")};
         final String[] camPkg = {cfg.getString("pkg360", "")};
+        final String[] voicePkg = {cfg.getString("pkgVoice", "")};
 
         ScrollView sv = new ScrollView(this);
         LinearLayout l = new LinearLayout(this);
@@ -1118,6 +1215,19 @@ public class MainActivity extends Activity {
         l.setPadding(dp(20), dp(10), dp(20), dp(10));
         sv.addView(l);
 
+        heading(l, "Look");
+        final RadioGroup modeG = new RadioGroup(this);
+        String[] modeNames = {"Functional (black and chrome)", "Fancy (chrome tiles, line icons)"};
+        for (int k = 0; k < 2; k++) {
+            RadioButton rb = new RadioButton(this);
+            rb.setText(modeNames[k]);
+            rb.setId(3000 + k);
+            modeG.addView(rb);
+        }
+        modeG.check(3000 + cfg.getInt("mode", 0));
+        l.addView(modeG);
+
+        heading(l, "Apps");
         final Button radioBtn = new Button(this);
         radioBtn.setText("Radio app: " + appLabel(radioPkg[0]));
         radioBtn.setOnClickListener(new View.OnClickListener() {
@@ -1150,9 +1260,36 @@ public class MainActivity extends Activity {
         });
         l.addView(camBtn);
 
-        TextView mt = new TextView(this);
-        mt.setText("\nCalling");
-        l.addView(mt);
+        final Button voiceBtn = new Button(this);
+        voiceBtn.setText("Voice assistant app: " + appLabel(voicePkg[0]));
+        voiceBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                chooseApp("Voice assistant app (for example Google or Gemini)", new Pick() {
+                    @Override
+                    public void onPick(String pkg, String label) {
+                        voicePkg[0] = pkg;
+                        voiceBtn.setText("Voice assistant app: " + label);
+                    }
+                });
+            }
+        });
+        l.addView(voiceBtn);
+
+        heading(l, "Steering-wheel voice button");
+        final RadioGroup voiceG = new RadioGroup(this);
+        String[] voiceNames = {"Call the primary contact", "Open the voice assistant app", "Send a macro broadcast"};
+        for (int k = 0; k < 3; k++) {
+            RadioButton rb = new RadioButton(this);
+            rb.setText(voiceNames[k]);
+            rb.setId(2000 + k);
+            voiceG.addView(rb);
+        }
+        voiceG.check(2000 + cfg.getInt("voiceMode", 0));
+        l.addView(voiceG);
+        final EditText wheelMacro = field(l, "Macro action for the wheel button (only for macro mode)", cfg.getString("wheelMacro", ""), InputType.TYPE_CLASS_TEXT);
+
+        heading(l, "Calling");
         final RadioGroup rg = new RadioGroup(this);
         String[] modes = {"Direct call (Bluetooth / SIM)", "Open dial screen", "Macro broadcast"};
         for (int k = 0; k < 3; k++) {
@@ -1165,23 +1302,76 @@ public class MainActivity extends Activity {
         l.addView(rg);
         final EditText macro = field(l, "Macro broadcast action (only for macro mode)", cfg.getString("macroAction", ""), InputType.TYPE_CLASS_TEXT);
 
+        heading(l, "Screen");
         final CheckBox status = new CheckBox(this);
         status.setText("Show status bar (with black background)");
         status.setChecked(cfg.getBoolean("showStatus", false));
         l.addView(status);
+        final CheckBox floating = new CheckBox(this);
+        floating.setText("Floating mute / home button");
+        floating.setChecked(cfg.getBoolean("floating", true));
+        l.addView(floating);
+        final EditText corner = numField(l, "Screen corner roundness in dp (0 = square)", cfg.getInt("corner", 30));
+        final EditText margin = numField(l, "Black edge margin in dp (0 = none)", cfg.getInt("margin", 6));
+        final EditText ui = numField(l, "UI size in percent (100 = normal, try 80 to 130)", cfg.getInt("uiScale", 100));
+        final RadioGroup og = new RadioGroup(this);
+        String[] oNames = {"Landscape (recommended)", "Portrait (experimental)", "Automatic (experimental)"};
+        for (int k = 0; k < 3; k++) {
+            RadioButton rb = new RadioButton(this);
+            rb.setText(oNames[k]);
+            rb.setId(4000 + k);
+            og.addView(rb);
+        }
+        og.check(4000 + cfg.getInt("orient", 0));
+        l.addView(og);
 
-        final EditText corner = field(l, "Screen corner roundness in dp (0 = square)", String.valueOf(cfg.getInt("corner", 30)), InputType.TYPE_CLASS_NUMBER);
-        final EditText auto = field(l, "Open radio this many seconds after boot (0 = off)", String.valueOf(cfg.getInt("autoRadio", 0)), InputType.TYPE_CLASS_NUMBER);
-
-        Button dl = new Button(this);
-        dl.setText("Download offline map around here");
-        dl.setOnClickListener(new View.OnClickListener() {
+        heading(l, "Map");
+        final RadioGroup mapG = new RadioGroup(this);
+        String[] mapNames = {"OpenStreetMap (online, cached)", "Offline map file (Mapsforge)", "Google Maps app only (no map here)"};
+        for (int k = 0; k < 3; k++) {
+            RadioButton rb = new RadioButton(this);
+            rb.setText(mapNames[k]);
+            rb.setId(5000 + k);
+            mapG.addView(rb);
+        }
+        mapG.check(5000 + cfg.getInt("mapEngine", 0));
+        l.addView(mapG);
+        TextView cur = new TextView(this);
+        String mf = cfg.getString("mapFile", "");
+        cur.setText("Offline map file: " + (mf.length() == 0 ? "none" : new File(mf).getName()));
+        l.addView(cur);
+        Button pick = new Button(this);
+        pick.setText("Choose offline map file (.map)");
+        pick.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                downloadOffline();
+                pickMapFile();
             }
         });
-        l.addView(dl);
+        l.addView(pick);
+        Button find = new Button(this);
+        find.setText("Find .map files on this device");
+        find.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                findMapFiles();
+            }
+        });
+        l.addView(find);
+
+        heading(l, "Floating button colour");
+        final RadioGroup colG = new RadioGroup(this);
+        for (int k = 0; k < 4; k++) {
+            RadioButton rb = new RadioButton(this);
+            rb.setText(FloatingService.COLOR_NAMES[k]);
+            rb.setId(6000 + k);
+            colG.addView(rb);
+        }
+        colG.check(6000 + cfg.getInt("floatColor", 0));
+        l.addView(colG);
+
+        heading(l, "Extras");
+        final EditText auto = numField(l, "Open radio this many seconds after boot (0 = off)", cfg.getInt("autoRadio", 0));
 
         new AlertDialog.Builder(this)
                 .setTitle("Launcher settings")
@@ -1191,26 +1381,36 @@ public class MainActivity extends Activity {
                     public void onClick(DialogInterface d, int w) {
                         int m = rg.getCheckedRadioButtonId() - 1000;
                         if (m < 0 || m > 2) m = 0;
-                        int cr = 30, ar = 0;
-                        try {
-                            cr = Integer.parseInt(corner.getText().toString().trim());
-                        } catch (Exception ignored) {
-                        }
-                        try {
-                            ar = Integer.parseInt(auto.getText().toString().trim());
-                        } catch (Exception ignored) {
-                        }
+                        int vm = voiceG.getCheckedRadioButtonId() - 2000;
+                        if (vm < 0 || vm > 2) vm = 0;
+                        int md = modeG.getCheckedRadioButtonId() - 3000;
+                        if (md < 0 || md > 1) md = 0;
+                        int or = og.getCheckedRadioButtonId() - 4000;
+                        if (or < 0 || or > 2) or = 0;
+                        int me = mapG.getCheckedRadioButtonId() - 5000;
+                        if (me < 0 || me > 2) me = 0;
+                        int fc = colG.getCheckedRadioButtonId() - 6000;
+                        if (fc < 0 || fc > 3) fc = 0;
+                        int sc = Math.max(60, Math.min(160, intOf(ui, 100)));
                         cfg.edit().putString("pkgRadio", radioPkg[0])
                                 .putString("pkg360", camPkg[0])
+                                .putString("pkgVoice", voicePkg[0])
+                                .putInt("voiceMode", vm)
+                                .putString("wheelMacro", wheelMacro.getText().toString().trim())
+                                .putInt("mapEngine", me)
+                                .putInt("floatColor", fc)
+                                .putInt("mode", md)
                                 .putInt("callMode", m)
                                 .putString("macroAction", macro.getText().toString().trim())
                                 .putBoolean("showStatus", status.isChecked())
-                                .putInt("corner", cr)
-                                .putInt("autoRadio", ar).apply();
-                        applyStatusBar();
-                        map.getRootView().invalidate();
-                        View rv = findViewById(android.R.id.content);
-                        if (rv != null) rv.invalidate();
+                                .putBoolean("floating", floating.isChecked())
+                                .putInt("corner", intOf(corner, 30))
+                                .putInt("margin", intOf(margin, 6))
+                                .putInt("uiScale", sc)
+                                .putInt("orient", or)
+                                .putInt("autoRadio", intOf(auto, 0)).apply();
+                        if (floating.isChecked()) askOverlayPermission();
+                        stopService(new Intent(MainActivity.this, FloatingService.class));
                         recreate();
                     }
                 })
@@ -1218,42 +1418,99 @@ public class MainActivity extends Activity {
                 .show();
     }
 
-    private void downloadOffline() {
-        if (lastLoc == null) {
-            Toast.makeText(this, "Wait for a GPS fix first", Toast.LENGTH_LONG).show();
+    // ------------------------------------------------------------------ offline map file
+
+    private static final int REQ_MAP = 77;
+
+    private void pickMapFile() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("*/*");
+        try {
+            startActivityForResult(i, REQ_MAP);
+        } catch (Exception e) {
+            Toast.makeText(this, "No file picker on this device. Use \"Find .map files\" instead.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req == REQ_MAP && res == RESULT_OK && data != null && data.getData() != null) {
+            copyMap(data.getData());
+        }
+    }
+
+    private void copyMap(final Uri uri) {
+        Toast.makeText(this, "Importing the map, please wait...", Toast.LENGTH_LONG).show();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    File dir = getExternalFilesDir("maps");
+                    if (dir == null) dir = new File(getFilesDir(), "maps");
+                    dir.mkdirs();
+                    File out = new File(dir, "offline.map");
+                    InputStream in = getContentResolver().openInputStream(uri);
+                    OutputStream os = new FileOutputStream(out);
+                    byte[] buf = new byte[1 << 16];
+                    int n;
+                    while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
+                    os.close();
+                    in.close();
+                    cfg.edit().putString("mapFile", out.getAbsolutePath()).putInt("mapEngine", 1).apply();
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(MainActivity.this, "Map imported", Toast.LENGTH_LONG).show();
+                            recreate();
+                        }
+                    });
+                } catch (Exception e) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(MainActivity.this, "Could not import the map file", Toast.LENGTH_LONG).show();
+                        }
+                    });
+                }
+            }
+        }).start();
+    }
+
+    private void findMapFiles() {
+        File[] dirs = {
+                getExternalFilesDir("maps"),
+                getExternalFilesDir(null),
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                new File(Environment.getExternalStorageDirectory(), "Maps"),
+                new File(Environment.getExternalStorageDirectory(), "maps"),
+                new File(Environment.getExternalStorageDirectory(), "mapsforge")};
+        final ArrayList<File> found = new ArrayList<File>();
+        for (File d : dirs) {
+            if (d == null || !d.isDirectory()) continue;
+            File[] list = d.listFiles();
+            if (list == null) continue;
+            for (File f : list) {
+                if (f.isFile() && f.getName().toLowerCase(Locale.ROOT).endsWith(".map")) found.add(f);
+            }
+        }
+        if (found.isEmpty()) {
+            Toast.makeText(this, "No .map files found. Put one in Downloads, or use the file picker.", Toast.LENGTH_LONG).show();
             return;
         }
-        double la = lastLoc.getLatitude(), lo = lastLoc.getLongitude();
-        BoundingBox bb = new BoundingBox(la + 0.12, lo + 0.12, la - 0.12, lo - 0.12);
-        try {
-            CacheManager mgr = new CacheManager(map);
-            mgr.downloadAreaAsync(this, bb, 10, 16, new CacheManager.CacheManagerCallback() {
-                @Override
-                public void onTaskComplete() {
-                    Toast.makeText(MainActivity.this, "Offline map ready", Toast.LENGTH_LONG).show();
-                }
-
-                @Override
-                public void onTaskFailed(int errors) {
-                    Toast.makeText(MainActivity.this, "Some tiles failed: " + errors, Toast.LENGTH_LONG).show();
-                }
-
-                @Override
-                public void updateProgress(int progress, int currentZoomLevel, int zoomMin, int zoomMax) {
-                }
-
-                @Override
-                public void downloadStarted() {
-                }
-
-                @Override
-                public void setPossibleTilesInArea(int total) {
-                }
-            });
-            Toast.makeText(this, "Downloading map in the background...", Toast.LENGTH_LONG).show();
-        } catch (Exception e) {
-            Toast.makeText(this, "Offline download is blocked by the map server (bulk downloads are not allowed on the standard OpenStreetMap tiles)", Toast.LENGTH_LONG).show();
-        }
+        String[] names = new String[found.size()];
+        for (int k = 0; k < names.length; k++) names[k] = found.get(k).getName();
+        new AlertDialog.Builder(this)
+                .setTitle("Choose a map")
+                .setItems(names, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface d, int which) {
+                        cfg.edit().putString("mapFile", found.get(which).getAbsolutePath()).putInt("mapEngine", 1).apply();
+                        recreate();
+                    }
+                })
+                .show();
     }
 
     // ------------------------------------------------------------------ overlay: chrome lines + rounded screen corners
@@ -1301,31 +1558,19 @@ public class MainActivity extends Activity {
             p.setColor(CHROME);
             c.drawRect(x1 - t * 0.5f, y0 - t * 0.5f, x1 + t * 0.5f, y1, p);
 
-            // software rounded corners
+            // pure black margin on all four sides, with the inner edge rounded at three corners
+            float m = dp(cfg.getInt("margin", 6));
             float r = dp(cfg.getInt("corner", 30));
-            if (r < 1f) return;
+            if (m < 1f && r < 1f) return;
             corner.reset();
-            corner.moveTo(0, 0);
-            corner.lineTo(r, 0);
-            corner.arcTo(new RectF(0, 0, 2 * r, 2 * r), 270, -90);
-            corner.close();
+            corner.setFillType(Path.FillType.EVEN_ODD);
+            corner.addRect(0, 0, w, h, Path.Direction.CW);
+            RectF inner = new RectF(m, m, w - m, h - m);
+            // order: top-left, top-right, bottom-right, bottom-left (bottom-left stays square)
+            corner.addRoundRect(inner, new float[]{r, r, r, r, r, r, 0, 0}, Path.Direction.CW);
+            p.setStyle(Paint.Style.FILL);
             p.setColor(Color.BLACK);
             c.drawPath(corner, p);
-            c.save();
-            c.translate(w, 0);
-            c.rotate(90);
-            c.drawPath(corner, p);
-            c.restore();
-            c.save();
-            c.translate(w, h);
-            c.rotate(180);
-            c.drawPath(corner, p);
-            c.restore();
-            c.save();
-            c.translate(0, h);
-            c.rotate(270);
-            c.drawPath(corner, p);
-            c.restore();
         }
     }
 
@@ -1333,11 +1578,34 @@ public class MainActivity extends Activity {
 
     static class Glyph extends View {
         static final int RADIO = 0, PREV = 1, PLAY = 2, NEXT = 3, R360 = 4,
-                YT = 5, DRAWER = 6, MAP = 7, GEAR = 8;
+                YT = 5, DRAWER = 6, MAP = 7, GEAR = 8, MUTE = 9, HOME = 10, ASSIST = 11;
         private final int type;
         private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint hole = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        void setColor(int color) {
+            fill.setColor(color);
+            stroke.setColor(color);
+            invalidate();
+        }
+
+        private String iconName() {
+            switch (type) {
+                case RADIO: return "radio";
+                case PREV: return "previous";
+                case PLAY: return "play";
+                case NEXT: return "next";
+                case R360: return "360-car";
+                case YT: return "youtube";
+                case DRAWER: return "app-grid";
+                case MAP: return "map-pin";
+                case GEAR: return "settings";
+                case MUTE: return "mute";
+                case HOME: return "home";
+                default: return null;
+            }
+        }
 
         Glyph(Context c, int type) {
             super(c);
@@ -1360,6 +1628,12 @@ public class MainActivity extends Activity {
             c.scale(u, u);
             Path p = new Path();
             stroke.setStrokeWidth(5);
+            String pack = MainActivity.fancy ? iconName() : null;
+            if (pack != null && IconPack.has(pack)) {
+                IconPack.draw(c, pack, stroke);
+                c.restore();
+                return;
+            }
             switch (type) {
                 case PLAY:
                     p.moveTo(30, 14);
@@ -1450,10 +1724,39 @@ public class MainActivity extends Activity {
                         c.drawLine(50 + cx * 30, 50 + cy * 30, 50 + cx * 40, 50 + cy * 40, stroke);
                     }
                     break;
+                case MUTE:
+                    p.moveTo(14, 38);
+                    p.lineTo(32, 38);
+                    p.lineTo(54, 18);
+                    p.lineTo(54, 82);
+                    p.lineTo(32, 62);
+                    p.lineTo(14, 62);
+                    p.close();
+                    c.drawPath(p, fill);
+                    c.drawLine(66, 38, 90, 62, stroke);
+                    c.drawLine(90, 38, 66, 62, stroke);
+                    break;
+                case HOME:
+                    p.moveTo(12, 50);
+                    p.lineTo(50, 16);
+                    p.lineTo(88, 50);
+                    c.drawPath(p, stroke);
+                    p.reset();
+                    p.moveTo(24, 44);
+                    p.lineTo(24, 84);
+                    p.lineTo(76, 84);
+                    p.lineTo(76, 44);
+                    c.drawPath(p, stroke);
+                    c.drawRect(42, 60, 58, 84, stroke);
+                    break;
+                case ASSIST:
+                    c.drawCircle(50, 50, 36, stroke);
+                    c.drawCircle(50, 50, 14, fill);
+                    break;
                 default:
                     break;
             }
             c.restore();
         }
     }
-}
+    }
