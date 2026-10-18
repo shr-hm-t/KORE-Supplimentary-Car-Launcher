@@ -79,6 +79,7 @@ import java.util.TimeZone;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 
 public class MainActivity extends Activity {
 
@@ -1874,4 +1875,4 @@ public class MainActivity extends Activity {
             c.restore();
         }
     }
-            }
+}
