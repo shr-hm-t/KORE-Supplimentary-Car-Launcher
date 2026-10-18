@@ -66,6 +66,8 @@ Everything stays on the device. The only network requests are map tiles and plac
 
 ## Credits
 
+- Idea, design direction, hardware testing and feedback: the project owner.
+- Code, build setup, UI design iterations and documentation: written with [Claude](https://claude.ai) (Anthropic), under the owner's direction.
 Map data © OpenStreetMap contributors. Maps by [osmdroid](https://github.com/osmdroid/osmdroid).
 
 ## License
