@@ -82,7 +82,7 @@ final class OsmHost implements MapHost {
     private final MapView map;
     private MyLocationNewOverlay overlay;
 
-    OsmHost(Context c, View.OnTouchListener touch) {
+    OsmHost(Context c, View.OnTouchListener touch, boolean night) {
         ctx = c;
         map = new MapView(c);
         map.setTileSource(TileSourceFactory.MAPNIK);
@@ -90,7 +90,7 @@ final class OsmHost implements MapHost {
         map.getZoomController().setVisibility(CustomZoomButtonsController.Visibility.NEVER);
         map.getController().setZoom(16.0);
         map.getController().setCenter(new GeoPoint(6.9271, 79.8612));
-        map.getOverlayManager().getTilesOverlay().setColorFilter(MapStyle.dark());
+        if (night) map.getOverlayManager().getTilesOverlay().setColorFilter(MapStyle.dark());
         map.setOnTouchListener(touch);
     }
 
@@ -143,8 +143,10 @@ final class OsmHost implements MapHost {
 final class MapsforgeHost implements MapHost {
     private final org.mapsforge.map.android.view.MapView mv;
     private Circle dot;
+    private final boolean night;
 
-    MapsforgeHost(Activity a, File mapFile, View.OnTouchListener touch) {
+    MapsforgeHost(Activity a, File mapFile, View.OnTouchListener touch, boolean night) {
+        this.night = night;
         AndroidGraphicFactory.createInstance(a.getApplication());
         mv = new org.mapsforge.map.android.view.MapView(a);
         mv.setClickable(true);
@@ -162,9 +164,11 @@ final class MapsforgeHost implements MapHost {
         layer.setXmlRenderTheme(InternalRenderTheme.DEFAULT);
         mv.getLayerManager().getLayers().add(layer);
 
-        Paint filter = new Paint();
-        filter.setColorFilter(MapStyle.dark());
-        mv.setLayerType(View.LAYER_TYPE_HARDWARE, filter);
+        if (night) {
+            Paint filter = new Paint();
+            filter.setColorFilter(MapStyle.dark());
+            mv.setLayerType(View.LAYER_TYPE_HARDWARE, filter);
+        }
         mv.setOnTouchListener(touch);
     }
 
@@ -199,10 +203,10 @@ final class MapsforgeHost implements MapHost {
         LatLong ll = new LatLong(lat, lon);
         if (dot == null) {
             org.mapsforge.core.graphics.Paint fill = AndroidGraphicFactory.INSTANCE.createPaint();
-            fill.setColor(0xFF000000); // black here becomes white after the dark filter
+            fill.setColor(night ? 0xFF000000 : 0xFF1A1A1A); // black becomes white after the dark filter
             fill.setStyle(Style.FILL);
             org.mapsforge.core.graphics.Paint edge = AndroidGraphicFactory.INSTANCE.createPaint();
-            edge.setColor(0xFFFFFFFF);
+            edge.setColor(night ? 0xFFFFFFFF : 0xFF000000);
             edge.setStyle(Style.STROKE);
             edge.setStrokeWidth(4);
             dot = new Circle(ll, 22f, fill, edge);
@@ -277,4 +281,4 @@ final class NoMapHost implements MapHost {
     public double[] center() {
         return null;
     }
-}
+                                                      }
