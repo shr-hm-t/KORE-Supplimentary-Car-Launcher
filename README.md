@@ -70,9 +70,9 @@ Everything stays on the device. With the offline map option, the area name looku
 
 ## Credits
 
-- Fancy-theme icons are adapted from a design package generated with ChatGPT, and the layout and look were guided by the owner's designs.
+- Fancy-theme icons are adapted from a design package generated with ChatGPT and GoogleAI, and the layout and look were guided by the owner's designs.
 - Idea, design direction, hardware testing and feedback: the project owner.
-- Code, build setup, UI design iterations and documentation: written with [Claude](https://claude.ai) (Anthropic), under the owner's direction.
+- Code, build setup, UI design iterations and this documentation: written with [Claude](https://claude.ai) (Anthropic), under the owner's direction.
 
 Map data © OpenStreetMap contributors. Maps by [osmdroid](https://github.com/osmdroid/osmdroid).
 
