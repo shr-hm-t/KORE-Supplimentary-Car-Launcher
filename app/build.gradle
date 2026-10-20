@@ -14,6 +14,26 @@ android {
         versionName '1.0'
     }
 
+    signingConfigs {
+        release {
+            def ks = System.getenv('KEYSTORE_FILE')
+            if (ks != null && new File(ks).exists()) {
+                storeFile new File(ks)
+                storePassword System.getenv('KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KEY_ALIAS')
+                keyPassword System.getenv('KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            // fixed key when the secrets exist, otherwise the debug key so the build still installs
+            signingConfig System.getenv('KEYSTORE_FILE') != null ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
