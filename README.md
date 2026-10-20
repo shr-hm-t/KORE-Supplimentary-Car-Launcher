@@ -4,7 +4,7 @@ A minimal, car-first home screen for Android head units. Black, grey and cool-wh
 
 Built and tested on a Honda Vezel (2025) with a Nakamichi NAM5850 aftermarket unit. It should work on other landscape Android head units, but it has not been tested on them yet.
 
-> **Status:** version 1.0, first release. Built and tested on one car, so expect rough edges. Issues and ideas are welcome.
+> **Status:** version 1.0. Tested on one car and one unit so far, so other head units may behave differently. Issues and ideas are welcome.
 
 ## Features
 
@@ -20,30 +20,35 @@ Built and tested on a Honda Vezel (2025) with a Nakamichi NAM5850 aftermarket un
 
 ## Install
 
-1. Download the APK from the **Actions** tab. Open the latest green run and download the **VezelLauncher-apk** artifact.
-2. Unzip it and install `app-debug.apk` on the head unit.
+1. Open the **Releases** page of this repository and download `VezelLauncher.apk` from the latest release.
+2. On the head unit (or phone), allow installing from unknown sources for your file manager or browser, then open the APK. Play Protect on a phone may warn about the app because it asks for powerful permissions (display over other apps, notification access). Choose **Install anyway**.
 3. Press Home and choose **Vezel Launcher**. Pick **Always**, if offered.
-4. Allow **Location** and **Phone** permissions.
-5. Tap the hint on the map to grant **notification access**. This is needed for navigation info and the YouTube thumbnail.
-6. Tap the gear icon, then choose your radio app and your 360 app.
+4. Allow **Location** and **Phone** permissions, and the "display over other apps" permission for the floating buttons and frame.
+5. Grant **notification access** when asked. It is needed for navigation info and the YouTube thumbnail.
+6. Open Settings (gear icon) and choose your radio app, your 360 app and your driver seat.
 
-## Controls
+Updates install over the old version only when both were signed with the same key. If Android refuses an update, uninstall the old version first.
+
+## Using it
 
 | Control | Tap | Hold |
 |---|---|---|
-| Radio tile | Open radio | Settings |
-| 360 tile | Open 360 app | Settings |
+| Radio icon | Open the radio app | none |
+| 360 window | Open the 360 camera app | Settings |
 | Contact tile | Call | Edit contact, set primary |
-| YouTube icon | Switch map and thumbnail | none |
+| Map / YouTube icon | Switch the top area | Search destination |
+| Sun / moon icon | Switch day, night, auto | none |
 | Drawer icon | All apps | none |
-| Map icon | Open Google Maps | Search destination |
 | Gear icon | Settings | none |
+| Floating Mute / Home | Mute, go Home (drag to move) | none |
 
-## Build it yourself
+## Themes
 
-No computer is needed. Fork this repo and push a change, and GitHub Actions builds the APK. To build locally you need JDK 17 and Gradle 8.9, then run `gradle assembleDebug`.
+The whole look is one JSON file. Export it from Settings > Look, edit it, and import it back. See [THEMING.md](THEMING.md) and `themes/vezel-default-theme.json`.
 
-Stack: plain Android Views, Java 17, AGP 8.5.2, osmdroid 6.1.18, min SDK 23.
+## Building from source
+
+Plain Android Views, Java 17, AGP 8.5.2, osmdroid 6.1.18, Mapsforge 0.20.0, min SDK 23. You need JDK 17 and Gradle 8.9, then run `gradle assembleRelease`. The repository also has a GitHub Actions workflow, **Build APK**, that builds the app and can publish a release.
 
 ## Known limits
 
@@ -66,6 +71,10 @@ Everything stays on the device. With the offline map option, the area name looku
 
 Map data © OpenStreetMap contributors. Maps by [osmdroid](https://github.com/osmdroid/osmdroid).
 
+## Disclaimer
+
+An independent hobby project. It is not affiliated with Honda, Nakamichi or any other brand named here. Names and logos belong to their owners.
+
 ## License
 
-Add a licence before publishing (MIT is a common, simple choice).
+No licence has been chosen yet, so all rights are reserved until one is added.
