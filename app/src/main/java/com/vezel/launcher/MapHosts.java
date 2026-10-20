@@ -6,8 +6,15 @@ import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Paint;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
 import android.view.Gravity;
 import android.view.View;
+import android.webkit.CookieManager;
+import android.webkit.GeolocationPermissions;
+import android.webkit.WebChromeClient;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
@@ -32,6 +39,10 @@ import java.io.File;
 
 /** The three ways the top area can show a map. */
 interface MapHost {
+    /** A normal phone-Chrome identity so web pages do not treat the launcher as an embedded web view. */
+    String CHROME_UA = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) "
+            + "Chrome/124.0.0.0 Mobile Safari/537.36";
+
     View view();
 
     void onResume();
@@ -82,13 +93,19 @@ final class OsmHost implements MapHost {
     private final MapView map;
     private MyLocationNewOverlay overlay;
 
-    OsmHost(Context c, View.OnTouchListener touch, boolean night) {
+    OsmHost(Context c, View.OnTouchListener touch, boolean night, double zoom, float textScale) {
         ctx = c;
         map = new MapView(c);
         map.setTileSource(TileSourceFactory.MAPNIK);
         map.setMultiTouchControls(true);
         map.getZoomController().setVisibility(CustomZoomButtonsController.Visibility.NEVER);
-        map.getController().setZoom(16.0);
+        map.getController().setZoom(zoom);
+        // bigger map text: scale the tiles (looked up by name so a different osmdroid version cannot break the build)
+        try {
+            map.setTilesScaledToDpi(true);
+            MapView.class.getMethod("setTilesScaleFactor", float.class).invoke(map, textScale);
+        } catch (Throwable ignored) {
+        }
         map.getController().setCenter(new GeoPoint(6.9271, 79.8612));
         if (night) map.getOverlayManager().getTilesOverlay().setColorFilter(MapStyle.dark());
         map.setOnTouchListener(touch);
@@ -145,14 +162,14 @@ final class MapsforgeHost implements MapHost {
     private Circle dot;
     private final boolean night;
 
-    MapsforgeHost(Activity a, File mapFile, View.OnTouchListener touch, boolean night) {
+    MapsforgeHost(Activity a, File mapFile, View.OnTouchListener touch, boolean night, int zoom, float textScale) {
         this.night = night;
         AndroidGraphicFactory.createInstance(a.getApplication());
         mv = new org.mapsforge.map.android.view.MapView(a);
         mv.setClickable(true);
         mv.getMapScaleBar().setVisible(false);
         mv.setBuiltInZoomControls(false);
-        mv.getModel().mapViewPosition.setZoomLevel((byte) 16);
+        mv.getModel().mapViewPosition.setZoomLevel((byte) zoom);
         mv.getModel().mapViewPosition.setCenter(new LatLong(6.9271, 79.8612));
 
         TileCache cache = AndroidUtil.createTileCache(a, "vezelmap",
@@ -162,6 +179,11 @@ final class MapsforgeHost implements MapHost {
         TileRendererLayer layer = new TileRendererLayer(cache, store,
                 mv.getModel().mapViewPosition, AndroidGraphicFactory.INSTANCE);
         layer.setXmlRenderTheme(InternalRenderTheme.DEFAULT);
+        // bigger place and road names (looked up by name so a different version cannot break the build)
+        try {
+            TileRendererLayer.class.getMethod("setTextScale", float.class).invoke(layer, textScale);
+        } catch (Throwable ignored) {
+        }
         mv.getLayerManager().getLayers().add(layer);
 
         if (night) {
@@ -281,4 +303,71 @@ final class NoMapHost implements MapHost {
     public double[] center() {
         return null;
     }
-                                                      }
+}
+
+/** A web page as the map (for example Google Maps in the browser engine). Needs internet. */
+final class WebMapHost implements MapHost {
+    private final WebView web;
+
+    WebMapHost(Context c, View.OnTouchListener touch, String url) {
+        web = new WebView(c);
+        WebSettings s = web.getSettings();
+        s.setJavaScriptEnabled(true);
+        s.setDomStorageEnabled(true);
+        s.setGeolocationEnabled(true);
+        s.setUseWideViewPort(true);
+        s.setLoadWithOverviewMode(true);
+        s.setUserAgentString(CHROME_UA);
+        CookieManager.getInstance().setAcceptCookie(true);
+        if (Build.VERSION.SDK_INT >= 21) CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
+        web.setWebViewClient(new WebViewClient());
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback cb) {
+                cb.invoke(origin, true, false);
+            }
+        });
+        web.setOnTouchListener(touch);
+        web.loadUrl(url == null || url.length() == 0 ? "https://www.google.com/maps" : url);
+    }
+
+    @Override
+    public View view() {
+        return web;
+    }
+
+    @Override
+    public void onResume() {
+        web.onResume();
+    }
+
+    @Override
+    public void onPause() {
+        web.onPause();
+    }
+
+    @Override
+    public void onDestroy() {
+        try {
+            web.destroy();
+        } catch (Exception ignored) {
+        }
+    }
+
+    @Override
+    public void showCar() {
+    }
+
+    @Override
+    public void setCar(double lat, double lon) {
+    }
+
+    @Override
+    public void centerOn(double lat, double lon) {
+    }
+
+    @Override
+    public double[] center() {
+        return null;
+    }
+}

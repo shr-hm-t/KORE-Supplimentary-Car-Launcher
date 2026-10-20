@@ -1,0 +1,47 @@
+{
+  "name": "Vezel Radio",
+  "version": 1,
+  "dark": {
+    "bgTop": "#1B2733",
+    "bgBottom": "#0A0F14",
+    "accent": "#FF8A1E",
+    "text": "#F2F5F8",
+    "sub": "#9BA1A8",
+    "glyph": "#F2F5F8",
+    "tileFill": "#59000000",
+    "tileStroke": "#66FFFFFF",
+    "vignetteColor": "#000000"
+  },
+  "light": {
+    "bgTop": "#EEF2F6",
+    "bgBottom": "#CBD3DA",
+    "accent": "#E8590C",
+    "text": "#14171A",
+    "sub": "#4A5057",
+    "glyph": "#14171A",
+    "tileFill": "#4DFFFFFF",
+    "tileStroke": "#66000000",
+    "vignetteColor": "#9AA3AB"
+  },
+  "menu": {
+    "bgTop": "#212B35",
+    "bgBottom": "#0A0E12",
+    "stroke": "#5A6068",
+    "accent": "#FF8A1E",
+    "text": "#F2F5F8",
+    "sub": "#9BA1A8"
+  },
+  "vignette": 35,
+  "tileRadius": 0,
+  "layout": {
+    "pipW": 0.423,
+    "pipH": 0.5,
+    "barH": 0.15,
+    "dockH": 0.12
+  },
+  "frame": {
+    "margin": 8,
+    "corner": 40
+  },
+  "icons": {}
+}

@@ -71,4 +71,61 @@ final class IconPack {
         c.drawPath(path(name), stroke);
         c.restore();
     }
+
+    // ---- icons supplied by an imported theme (stroked paths on the same 24 x 24 grid)
+
+    private static final HashMap<String, String> O = new HashMap<String, String>();
+
+    static void clearOverrides() {
+        O.clear();
+    }
+
+    static void setOverride(String name, String d) {
+        if (name == null) return;
+        if (d == null || d.trim().length() == 0) O.remove(name);
+        else O.put(name, d.trim());
+    }
+
+    static boolean hasOverride(String name) {
+        return name != null && O.containsKey(name);
+    }
+
+    /** Draws a themed icon in a 100 x 100 box (the caller has already scaled the canvas). */
+    static void drawOverride(Canvas c, String name, Paint stroke) {
+        String d = O.get(name);
+        if (d == null) return;
+        Path p = CACHE.get("d:" + d);
+        if (p == null) {
+            p = new Path();
+            try {
+                String[] t = d.split("\\s+");
+                int i = 0;
+                while (i < t.length) {
+                    String cmd = t[i++];
+                    if (cmd.equals("M")) {
+                        p.moveTo(Float.parseFloat(t[i]), Float.parseFloat(t[i + 1]));
+                        i += 2;
+                    } else if (cmd.equals("L")) {
+                        p.lineTo(Float.parseFloat(t[i]), Float.parseFloat(t[i + 1]));
+                        i += 2;
+                    } else if (cmd.equals("C")) {
+                        p.cubicTo(Float.parseFloat(t[i]), Float.parseFloat(t[i + 1]),
+                                Float.parseFloat(t[i + 2]), Float.parseFloat(t[i + 3]),
+                                Float.parseFloat(t[i + 4]), Float.parseFloat(t[i + 5]));
+                        i += 6;
+                    } else if (cmd.equals("Z")) {
+                        p.close();
+                    }
+                }
+            } catch (Exception e) {
+                p = new Path();
+            }
+            CACHE.put("d:" + d, p);
+        }
+        c.save();
+        c.scale(100f / 24f, 100f / 24f);
+        stroke.setStrokeWidth(1.6f);
+        c.drawPath(p, stroke);
+        c.restore();
+    }
 }

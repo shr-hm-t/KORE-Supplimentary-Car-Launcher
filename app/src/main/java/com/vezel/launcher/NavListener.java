@@ -25,6 +25,8 @@ public class NavListener extends NotificationListenerService {
     public static volatile CharSequence text;
     public static volatile Bitmap icon;
     public static volatile Runnable onChange;
+    /** Raw data of the last navigation notification, shown by the test button in settings. */
+    public static volatile String debug = "No navigation notification seen yet.";
 
     private static final String[] NAV_PACKAGES = {
             "com.google.android.apps.maps", "com.waze", "net.osmand", "net.osmand.plus"
@@ -66,11 +68,27 @@ public class NavListener extends NotificationListenerService {
         if (sbn == null || !isNav(sbn.getPackageName())) return;
         Notification n = sbn.getNotification();
         if (n == null || n.extras == null) return;
-        if ((n.flags & Notification.FLAG_ONGOING_EVENT) == 0) return;
+        boolean ongoing = (n.flags & Notification.FLAG_ONGOING_EVENT) != 0;
+        boolean navCat = Notification.CATEGORY_NAVIGATION.equals(n.category);
 
         CharSequence t = n.extras.getCharSequence(Notification.EXTRA_TITLE);
         CharSequence x = n.extras.getCharSequence(Notification.EXTRA_TEXT);
+        CharSequence sub = n.extras.getCharSequence(Notification.EXTRA_SUB_TEXT);
+        CharSequence big = n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT);
+        CharSequence info = n.extras.getCharSequence(Notification.EXTRA_INFO_TEXT);
         Bitmap b = iconFromExtras(n);
+        StringBuilder dbg = new StringBuilder();
+        dbg.append("package: ").append(sbn.getPackageName())
+                .append("\nongoing: ").append(ongoing).append("   category: ").append(n.category)
+                .append("\ntitle: ").append(t).append("\ntext: ").append(x)
+                .append("\nsubText: ").append(sub).append("\nbigText: ").append(big)
+                .append("\ninfoText: ").append(info).append("\nlarge icon found: ").append(b != null);
+        if (!ongoing && !navCat) {
+            debug = dbg.toString() + "\n(ignored: not an ongoing navigation notification)";
+            return;
+        }
+        if ((t == null || t.length() == 0) && big != null) t = big;
+        if ((x == null || x.length() == 0) && sub != null) x = sub;
 
         // Google Maps often puts the turn info in a custom layout instead of normal fields.
         boolean noText = (t == null || t.length() == 0);
@@ -83,7 +101,9 @@ public class NavListener extends NotificationListenerService {
                 x = texts.size() > 1 ? texts.get(1) : x;
             }
             if (b == null) b = found[0];
+            dbg.append("\nscraped texts: ").append(texts);
         }
+        debug = dbg.toString();
         title = t;
         text = x;
         icon = b;
@@ -162,4 +182,4 @@ public class NavListener extends NotificationListenerService {
         Runnable r = onChange;
         if (r != null) r.run();
     }
-              }
+}

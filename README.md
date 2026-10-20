@@ -4,29 +4,19 @@ A minimal, car-first home screen for Android head units. Black, grey and cool-wh
 
 Built and tested on a Honda Vezel (2025) with a Nakamichi NAM5850 aftermarket unit. It should work on other landscape Android head units, but it has not been tested on them yet.
 
-> **Status:** early, personal project. Expect rough edges. Issues and ideas are welcome.
+> **Status:** version 1.0, first release. Built and tested on one car, so expect rough edges. Issues and ideas are welcome.
 
 ## Features
 
-- **Live map:** dark, greyscale and low-detail (OpenStreetMap via osmdroid). It re-centres on the car after 10 seconds without a touch and never opens another app when tapped.
-- **Three map options:** OpenStreetMap (online, tiles are cached as you drive), a fully offline Mapsforge `.map` file you download once (for example from OpenAndroMaps or mapsforge.org), or no map at all (navigation stays in the Google Maps app).
-- **Turn-by-turn info:** reads the Google Maps (also Waze and OsmAnd) navigation notification and shows the turn arrow and instruction in large text.
-- **Place name:** city and area from OpenStreetMap (Nominatim).
-- **Destination search:** hold the Map button, search, and start navigation in Google Maps.
-- **Speed light:** a glow on the top edge of the map turns yellow at 80 km/h and red at 120 km/h. No speed number is shown.
-- **One-tap calls:** three contact tiles. Choose direct call (Bluetooth or SIM), open the dial screen, or send a broadcast to a macro app such as MacroDroid.
-- **Steering-wheel voice button:** calls your primary contact, or opens a voice assistant app you choose (for example Google or Gemini), depending on what the button sends.
-- **YouTube widget:** swaps the map for the current video's thumbnail and title.
-- **App picker and drawer:** choose your radio and 360-camera apps from a list. No package names to type.
-- **Radio tile:** tap to open your radio app.
-- **Floating mute and home buttons:** two neon buttons that float over every app and can be dragged. Colour choice: white, red, blue or green, with an optional position lock. Needs the "display over other apps" permission.
-- **Day and night:** the launcher and the map go light by day and dark by night. Automatic mode uses sunrise and sunset worked out from the GPS (no internet), or you can set fixed hours, or stay always dark. Light is never forced.
-- **Two looks:** a welcome screen on first start lets you choose Functional (plain black and chrome) or Fancy (chrome-rimmed tiles and thin line icons). Switch any time in settings.
-- **Tyre-pressure slot:** placeholder, waiting for real data.
-- **Display options:**
-  - Software rounded screen corners (three corners, bottom-left square) with an adjustable radius and a thin pure-black edge margin.
-  - UI size percentage and landscape, portrait or automatic orientation, so it can be tried on other devices.
-  - Optional status bar with a black background.
+- **Home screen:** map or YouTube widget on top, a bar with the 360 camera window and three contact tiles, and a black dock with the clock, Radio, map/YouTube switch, theme toggle, app drawer and settings.
+- **Maps:** OpenStreetMap, offline Mapsforge `.map`, the Google Maps web page, or none. Zoom, text size and vignette are adjustable.
+- **Navigation info:** reads the navigation notification (Google Maps, Waze, OsmAnd). Settings > Map has a test button.
+- **360 camera:** opens automatically when slow (GPS speed), optional retry after boot.
+- **YouTube widget:** notification or embedded page, thumbnail only, play/pause.
+- **Calls:** one-tap contacts, account chooser (Bluetooth or SIM), steering-wheel voice button through "Vezel Call".
+- **Floating buttons and frame:** neon Mute and Home buttons above every app, and a click-through 4-corner black frame.
+- **Themes:** the whole look is one JSON file. See THEMING.md.
+- **Day and night:** automatic from GPS sunrise and sunset, fixed hours, or always dark.
 
 ## Install
 
@@ -42,7 +32,6 @@ Built and tested on a Honda Vezel (2025) with a Nakamichi NAM5850 aftermarket un
 | Control | Tap | Hold |
 |---|---|---|
 | Radio tile | Open radio | Settings |
-| Previous, Play, Next | Media keys (Play also unmutes) | none |
 | 360 tile | Open 360 app | Settings |
 | Contact tile | Call | Edit contact, set primary |
 | YouTube icon | Switch map and thumbnail | none |
@@ -71,9 +60,9 @@ Everything stays on the device. With the offline map option, the area name looku
 
 ## Credits
 
-- Fancy-theme icons are adapted from a design package generated with ChatGPT and GoogleAI, and the layout and look were guided by the owner's designs.
-- Idea, design direction, hardware testing and feedback: the project owner.
-- Code, build setup, UI design iterations and documentation: written with [Claude](https://claude.ai) (Anthropic), under the owner's direction.
+- [Claude](https://claude.ai) (Anthropic): code, build setup, design iterations, documentation.
+- ChatGPT (OpenAI) and Gemini (Google): design ideas and early icons.
+- Idea, direction, hardware testing and feedback: the project owner.
 
 Map data © OpenStreetMap contributors. Maps by [osmdroid](https://github.com/osmdroid/osmdroid).
 
