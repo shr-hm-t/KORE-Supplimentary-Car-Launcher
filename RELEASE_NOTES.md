@@ -1,5 +1,13 @@
 # Release notes
 
+## 1.2 (compared with 1.1)
+
+- Renamed to KORE: Supplementary Car Launcher, with a new app icon (play button + navigation arrow).
+- Holding the play button in the YouTube widget opens YouTube in Brave (background play), or another browser if Brave is not installed.
+- Floating buttons start on the left side.
+- The bottom bar is now rounded and translucent.
+- Still to come: split status bar, shield bar with swapped icons, centre logo, mirrored seat layout.
+
 ## 1.1 (compared with 1.0)
 
 - Offline Mapsforge map only (online maps removed), new thin "line art" map style, stronger vignette, tile gaps and icon glow (all adjustable in the theme).

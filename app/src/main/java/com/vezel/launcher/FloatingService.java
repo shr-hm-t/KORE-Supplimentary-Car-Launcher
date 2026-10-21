@@ -255,7 +255,7 @@ public class FloatingService extends Service {
             DisplayMetrics dm = getResources().getDisplayMetrics();
             int size = dp(Math.max(48, Math.min(160, cfg.getInt("floatSize", 84))));
             boolean driverRight = cfg.getInt("seat", 0) == 0;
-            int defX = driverRight ? dm.widthPixels - size * 2 - dp(36) : dp(14);
+            int defX = dp(14);   // left side by default; drag to move
             int defY = (int) (dm.heightPixels * 0.40f);
             lp.x = cfg.getInt("floatX", defX);
             lp.y = cfg.getInt("floatY", defY);

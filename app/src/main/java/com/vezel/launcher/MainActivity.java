@@ -1305,7 +1305,12 @@ public class MainActivity extends Activity {
 
         LinearLayout dockIcons = new LinearLayout(this);
         dockIcons.setOrientation(LinearLayout.HORIZONTAL);
-        dockIcons.setBackgroundColor(Color.BLACK);
+        GradientDrawable dockBg = new GradientDrawable();
+        dockBg.setColor(0xE60B0F14);
+        dockBg.setCornerRadius(rdp(28));
+        dockBg.setStroke(Math.max(1, rdp(1)), cTileStroke);
+        dockIcons.setBackground(dockBg);
+        dockIcons.setPadding(rdp(10), rdp(2), rdp(10), rdp(2));
         String sel = "," + cfg.getString("dockItems", DOCK_DEFAULT) + ",";
         for (int k = 0; k < DOCK_IDS.length; k++) {
             if (sel.contains("," + DOCK_IDS[k] + ",")) {
@@ -1838,6 +1843,13 @@ public class MainActivity extends Activity {
                 ytPlayPause();
             }
         });
+        ytPlayBtn.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override
+            public boolean onLongClick(View v) {
+                openYoutube();   // hold = YouTube in Brave (background play)
+                return true;
+            }
+        });
         FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(dp(84), dp(84), Gravity.BOTTOM | Gravity.END);
         plp.bottomMargin = dp(26);
         plp.rightMargin = dp(26);
@@ -1906,12 +1918,19 @@ public class MainActivity extends Activity {
     private void openYoutube() {
         Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(cfg.getString("ytUrl", "https://m.youtube.com")));
         String bp = cfg.getString("pkgBrowser", "");
+        if (bp.length() == 0) {
+            try {
+                getPackageManager().getPackageInfo("com.brave.browser", 0);
+                bp = "com.brave.browser";
+            } catch (Exception ignored) {
+            }
+        }
         if (bp.length() > 0) i.setPackage(bp);
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
             startActivity(i);
         } catch (Exception e) {
-            Toast.makeText(this, "No browser found. Choose one in settings.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "No browser found. Install Brave (for background play) or choose one in settings.", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -2005,7 +2024,7 @@ public class MainActivity extends Activity {
             }
             if (lastYtBmp != null) ytImage.setImageBitmap(lastYtBmp);
             ytTitle.setText(lastYtTitle.length() > 0 ? lastYtTitle
-                    : "Nothing playing yet. Hold the video button below to open YouTube.");
+                    : "Nothing playing yet. Hold the play button to open YouTube in Brave.");
         } catch (SecurityException e) {
             ytTitle.setText("Allow navigation info access first (tap the hint on the map)");
         } catch (Exception e) {

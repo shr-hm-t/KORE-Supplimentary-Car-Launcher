@@ -22,7 +22,8 @@
     <application
         android:allowBackup="false"
         android:requestLegacyExternalStorage="true"
-        android:label="Vezel Launcher"
+        android:icon="@mipmap/ic_launcher"
+        android:label="KORE"
         android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
         android:usesCleartextTraffic="false">
 
