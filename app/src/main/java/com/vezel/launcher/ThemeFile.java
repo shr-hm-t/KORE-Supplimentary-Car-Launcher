@@ -16,18 +16,23 @@ final class ThemeFile {
     }
 
     static final String DEFAULT = "{"
-            + "\"name\":\"Vezel Radio\",\"version\":1,"
+            + "\"name\":\"Vezel Radio\",\"version\":2,"
             + "\"dark\":{\"bgTop\":\"#1B2733\",\"bgBottom\":\"#0A0F14\",\"accent\":\"#FF8A1E\","
             + "\"text\":\"#F2F5F8\",\"sub\":\"#9BA1A8\",\"glyph\":\"#F2F5F8\","
-            + "\"tileFill\":\"#59000000\",\"tileStroke\":\"#66FFFFFF\",\"vignetteColor\":\"#000000\"},"
+            + "\"tileFill\":\"#59000000\",\"tileStroke\":\"#66FFFFFF\",\"vignetteColor\":\"#000000\","
+            + "\"map\":{\"ground\":\"#0A1220\",\"water\":\"#0E2238\",\"road\":\"#4F6A86\",\"major\":\"#9FB8D4\","
+            + "\"building\":\"#26384D\",\"text\":\"#DCE8F5\",\"halo\":\"#CC0A1220\"}},"
             + "\"light\":{\"bgTop\":\"#EEF2F6\",\"bgBottom\":\"#CBD3DA\",\"accent\":\"#E8590C\","
             + "\"text\":\"#14171A\",\"sub\":\"#4A5057\",\"glyph\":\"#14171A\","
-            + "\"tileFill\":\"#4DFFFFFF\",\"tileStroke\":\"#66000000\",\"vignetteColor\":\"#9AA3AB\"},"
+            + "\"tileFill\":\"#4DFFFFFF\",\"tileStroke\":\"#66000000\",\"vignetteColor\":\"#3A4856\","
+            + "\"map\":{\"ground\":\"#E9EEF3\",\"water\":\"#C6D8E8\",\"road\":\"#7B8EA3\",\"major\":\"#33495F\","
+            + "\"building\":\"#B7C3CF\",\"text\":\"#1B2733\",\"halo\":\"#CCE9EEF3\"}},"
             + "\"menu\":{\"bgTop\":\"#212B35\",\"bgBottom\":\"#0A0E12\",\"stroke\":\"#5A6068\","
             + "\"accent\":\"#FF8A1E\",\"text\":\"#F2F5F8\",\"sub\":\"#9BA1A8\"},"
-            + "\"vignette\":35,\"tileRadius\":0,"
-            + "\"layout\":{\"pipW\":0.423,\"pipH\":0.50,\"barH\":0.15,\"dockH\":0.12},"
-            + "\"frame\":{\"margin\":8,\"corner\":40},"
+            + "\"vignette\":50,\"tileRadius\":8,\"tileGap\":6,\"iconGlow\":45,"
+            + "\"layout\":{\"pipW\":0.398,\"pipH\":0.515,\"barH\":0.15,\"dockH\":0.065},"
+            + "\"frame\":{\"margin\":8,\"corner\":60},"
+            + "\"iconColors\":{},"
             + "\"icons\":{}}";
 
     static JSONObject defaults() {

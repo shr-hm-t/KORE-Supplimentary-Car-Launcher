@@ -10,8 +10,8 @@ android {
         applicationId 'com.vezel.launcher'
         minSdk 23
         targetSdk 30
-        versionCode 4
-        versionName '1.0'
+        versionCode 5
+        versionName '1.1'
     }
 
     signingConfigs {
@@ -46,7 +46,6 @@ android {
 }
 
 dependencies {
-    implementation 'org.osmdroid:osmdroid-android:6.1.18'
     implementation 'org.mapsforge:mapsforge-core:0.20.0'
     implementation 'org.mapsforge:mapsforge-map:0.20.0'
     implementation 'org.mapsforge:mapsforge-map-reader:0.20.0'

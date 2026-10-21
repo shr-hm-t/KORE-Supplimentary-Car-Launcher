@@ -9,7 +9,7 @@ Built and tested on a Honda Vezel (2025) with a Nakamichi NAM5850 aftermarket un
 ## Features
 
 - **Home screen:** map or YouTube widget on top, a bar with the 360 camera window and three contact tiles, and a black dock with the clock, Radio, map/YouTube switch, theme toggle, app drawer and settings.
-- **Maps:** OpenStreetMap, offline Mapsforge `.map`, the Google Maps web page, or none. Zoom, text size and vignette are adjustable.
+- **Map:** offline Mapsforge `.map` file only, in a thin "line art" style (or the standard style). Zoom, text size and vignette are adjustable. For turn-by-turn navigation use the Navigate button (Google Maps by default).
 - **Navigation info:** reads the navigation notification (Google Maps, Waze, OsmAnd). Settings > Map has a test button.
 - **360 camera:** opens automatically when slow (GPS speed), optional retry after boot.
 - **YouTube widget:** notification or embedded page, thumbnail only, play/pause.
@@ -48,20 +48,19 @@ The whole look is one JSON file. Export it from Settings > Look, edit it, and im
 
 ## Building from source
 
-Plain Android Views, Java 17, AGP 8.5.2, osmdroid 6.1.18, Mapsforge 0.20.0, min SDK 23. You need JDK 17 and Gradle 8.9, then run `gradle assembleRelease`. The repository also has a GitHub Actions workflow, **Build APK**, that builds the app and can publish a release.
+Plain Android Views, Java 17, AGP 8.5.2, Mapsforge 0.20.0, min SDK 23. You need JDK 17 and Gradle 8.9, then run `gradle assembleRelease`. The repository also has a GitHub Actions workflow, **Build APK**, that builds the app and can publish a release.
 
 ## Known limits
 
 - Media keys do not control many radio apps. Head-unit radios often ignore Android media sessions.
 - The YouTube thumbnail depends on what the YouTube app shares. It may show only the title.
 - Starting the radio from the background may be blocked on newer Android versions.
-- The online map uses OpenStreetMap's public tile server. Follow the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/), and use the offline map file for heavy or fully private use. Bulk tile downloading is not supported.
 - The offline map uses the default Mapsforge style, filtered to greyscale. A calmer custom style is a future idea. Offline place search is not available yet.
 - Only the Google Maps, Waze and OsmAnd notifications are read for navigation info.
 
 ## Privacy
 
-Everything stays on the device. With the offline map option, the area name lookup and destination search are the only network requests, and you can avoid them by not using those features. With the online map, tile requests and place lookups go to OpenStreetMap (your coordinates are sent for the lookup). There is no analytics and no account.
+Everything stays on the device. The map is fully offline. The only network request the launcher makes itself is the area-name lookup (your coordinates go to OpenStreetMap's Nominatim), and the YouTube widget loads YouTube. There is no analytics and no account.
 
 ## Credits
 
@@ -69,7 +68,7 @@ Everything stays on the device. With the offline map option, the area name looku
 - ChatGPT (OpenAI) and Gemini (Google): design ideas and early icons.
 - Idea, direction, hardware testing and feedback: the project owner.
 
-Map data © OpenStreetMap contributors. Maps by [osmdroid](https://github.com/osmdroid/osmdroid).
+Map rendering by [Mapsforge](https://github.com/mapsforge/mapsforge). Map data © OpenStreetMap contributors.
 
 ## Disclaimer
 

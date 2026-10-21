@@ -15,6 +15,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
 import android.media.AudioManager;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
@@ -51,6 +52,8 @@ public class FloatingService extends Service {
     private FrameView frame;
     private WindowManager.LayoutParams lp;
     private View muteBtn;
+    private View shield;
+    private final Handler ui = new Handler();
     private SharedPreferences cfg;
     private int neon;
     private boolean muted = false;
@@ -84,7 +87,7 @@ public class FloatingService extends Service {
         protected void onDraw(Canvas c) {
             float w = getWidth(), h = getHeight();
             float m = dp(cfg.getInt("margin", 8));
-            float r = dp(cfg.getInt("corner", 40));
+            float r = dp(cfg.getInt("corner", 60));
             if (m < 1f && r < 1f) return;
             path.reset();
             path.setFillType(Path.FillType.EVEN_ODD);
@@ -214,7 +217,8 @@ public class FloatingService extends Service {
             root.setGravity(Gravity.CENTER_VERTICAL);
 
             muteBtn = bubble(MainActivity.Glyph.MUTE);
-            View homeBtn = bubble(MainActivity.Glyph.HOME);
+            final boolean back = cfg.getInt("floatSecond", 0) == 0;
+            View homeBtn = bubble(back ? MainActivity.Glyph.BACK : MainActivity.Glyph.HOME);
             root.addView(muteBtn);
             root.addView(homeBtn);
 
@@ -227,6 +231,12 @@ public class FloatingService extends Service {
             attachDrag(homeBtn, new Runnable() {
                 @Override
                 public void run() {
+                    if (back) {
+                        if (AppWatcher.back()) return;
+                        // this unit does not allow it: act as Home instead
+                        Toast.makeText(FloatingService.this,
+                                "Back is not possible on this unit, going Home", Toast.LENGTH_SHORT).show();
+                    }
                     Intent h = new Intent(Intent.ACTION_MAIN);
                     h.addCategory(Intent.CATEGORY_HOME);
                     h.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -255,7 +265,79 @@ public class FloatingService extends Service {
                 root = null;
             }
         }
-        if (frame == null && root == null) stopSelf();
+        if (frame == null && root == null && cfg.getInt("shieldMode", 0) == 0) {
+            stopSelf();
+            return;
+        }
+        if (cfg.getInt("frameMode", 0) + cfg.getInt("floatMode", 0) + cfg.getInt("shieldMode", 0) > 0) {
+            AppWatcher.start(this, new Runnable() {
+                @Override
+                public void run() {
+                    applyRules();
+                }
+            });
+        }
+        applyRules();
+    }
+
+    // ------------------------------------------------------------------ per-app rules
+
+    /** mode 0 = everywhere, 1 = only the chosen apps, 2 = everywhere except the chosen apps. */
+    private boolean allowed(String modeKey, String appsKey, String pkg) {
+        int mode = cfg.getInt(modeKey, 0);
+        if (mode == 0 || !AppWatcher.running) return true;
+        boolean in = ("," + cfg.getString(appsKey, "") + ",").contains("," + pkg + ",");
+        return mode == 1 ? in : !in;
+    }
+
+    private void applyRules() {
+        String pkg = AppWatcher.pkg;
+        boolean home = pkg.length() == 0 || pkg.equals(getPackageName());
+        if (frame != null) {
+            boolean show = home || allowed("frameMode", "frameApps", pkg);
+            frame.setVisibility(show ? View.VISIBLE : View.GONE);
+            frameOn = show;
+        }
+        if (root != null) {
+            root.setVisibility(allowed("floatMode", "floatApps", pkg) ? View.VISIBLE : View.GONE);
+        }
+        boolean wantShield = AppWatcher.running && cfg.getInt("shieldMode", 0) > 0
+                && pkg.equals(cfg.getString("shieldApp", cfg.getString("pkg360", "")));
+        if (wantShield && shield == null) {
+            shield = new View(this);
+            shield.setOnTouchListener(new View.OnTouchListener() {
+                @Override
+                public boolean onTouch(View v, MotionEvent e) {
+                    return true;   // swallow the touch
+                }
+            });
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            boolean whole = cfg.getInt("shieldMode", 0) == 2;
+            int h = whole ? WindowManager.LayoutParams.MATCH_PARENT
+                    : Math.round(dm.heightPixels * Math.max(5, Math.min(60, cfg.getInt("shieldH", 14))) / 100f);
+            WindowManager.LayoutParams sl = new WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.MATCH_PARENT, h, overlayType(),
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                    PixelFormat.TRANSLUCENT);
+            sl.gravity = Gravity.BOTTOM | Gravity.START;
+            try {
+                wm.addView(shield, sl);
+                if (root != null) {      // keep the floating buttons above the shield
+                    wm.removeView(root);
+                    wm.addView(root, lp);
+                }
+            } catch (Exception ex) {
+                shield = null;
+            }
+        } else if (!wantShield && shield != null) {
+            try {
+                wm.removeView(shield);
+            } catch (Exception ignored) {
+            }
+            shield = null;
+        }
     }
 
     // ------------------------------------------------------------------ mute
@@ -318,6 +400,11 @@ public class FloatingService extends Service {
     public void onDestroy() {
         super.onDestroy();
         frameOn = false;
+        AppWatcher.stop();
+        try {
+            if (wm != null && shield != null) wm.removeView(shield);
+        } catch (Exception ignored) {
+        }
         if (inst == this) inst = null;
         try {
             if (wm != null && root != null) wm.removeView(root);

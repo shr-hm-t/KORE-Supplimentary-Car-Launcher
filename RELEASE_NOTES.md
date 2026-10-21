@@ -1,5 +1,17 @@
 # Release notes
 
+## 1.1 (compared with 1.0)
+
+- Offline Mapsforge map only (online maps removed), new thin "line art" map style, stronger vignette, tile gaps and icon glow (all adjustable in the theme).
+- Configurable bottom bar (radio, map/YouTube, navigation, music, dialer, car app, day/night, apps, settings).
+- PIP off = simple full-width layout: no 360 window, no black dock; radio and map/YouTube switch move into the contacts bar.
+- Faster start: the launcher shows its background first, then builds the screen and loads the map.
+- Floating second button can be Back (default; falls back to Home where the unit does not allow it) or Home.
+- Per-app rules (Usage access, no accessibility service): choose the apps where the black frame and floating buttons show; optional touch shield for one app (e.g. the 360 app).
+- Welcome guide: overlay permission, notification access, usage access.
+- Navigation info in readable dark boxes; Navigate button; settings backup/restore; status bar looks; YouTube embed fixes (no more intent: errors); call hang-up; sea-level altitude.
+- New defaults: 360 window 39.8 x 51.5, black bar 6.5, margin 8, corner 60, auto-360 speed 5-10 km/h, 360 retry 4 s, radio 1 s.
+
 ## 1.0 (compared with 0.2)
 
 **Layout**
