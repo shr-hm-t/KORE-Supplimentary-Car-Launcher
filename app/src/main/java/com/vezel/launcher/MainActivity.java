@@ -252,7 +252,7 @@ public class MainActivity extends Activity {
         // First frame: just the background, so Android sees the launcher straight away.
         // The map, widgets and buttons are built right afterwards.
         View first = new View(this);
-        first.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{cMidTop, cMidBot}));
+        first.setBackgroundColor(Color.BLACK);
         setContentView(first);
         applyStatusBar();
         handler.post(new Runnable() {
@@ -494,7 +494,7 @@ public class MainActivity extends Activity {
         cMenuStroke = ThemeFile.col(menu, "stroke", 0xFF5A6068);
         vigStrength = Math.max(0, Math.min(100, cfg.getInt("vignette", themeJ.optInt("vignette", 50))));
         tileRadius = Math.max(0, cfg.getInt("tileRadius", themeJ.optInt("tileRadius", 8)));
-        tileGap = Math.max(0, Math.min(30, cfg.getInt("tileGap", themeJ.optInt("tileGap", 6))));
+        tileGap = Math.max(0, Math.min(30, cfg.getInt("tileGap", themeJ.optInt("tileGap", 0))));
         iconGlow = Math.max(0, Math.min(100, cfg.getInt("iconGlow", themeJ.optInt("iconGlow", 45))));
         mapPal = pal == null ? null : pal.optJSONObject("map");
         IconPack.clearOverrides();
@@ -1129,8 +1129,8 @@ public class MainActivity extends Activity {
             }
         });
 
-        buildYtPane(top);
         if (vigStrength > 0) top.addView(new VignetteView(this), new FrameLayout.LayoutParams(-1, -1));
+        buildYtPane(top);
 
         // speed light from the top edge (yellow from 80 km/h, red from 120 km/h)
         lightGlow = new View(this);
@@ -1289,7 +1289,14 @@ public class MainActivity extends Activity {
         }
         FrameLayout barWrap = new FrameLayout(this);
         barWrap.addView(new Backdrop(this), new FrameLayout.LayoutParams(-1, -1));
-        barWrap.addView(bar, new FrameLayout.LayoutParams(-1, -1));
+        GradientDrawable pill = new GradientDrawable();
+        pill.setColor(cTileFill);
+        pill.setStroke(Math.max(1, rdp(1)), cTileStroke);
+        pill.setCornerRadius(rdp(30));
+        bar.setBackground(pill);
+        FrameLayout.LayoutParams pillLp = new FrameLayout.LayoutParams(-1, -1);
+        pillLp.setMargins(rdp(8), rdp(6), rdp(8), rdp(6));
+        barWrap.addView(bar, pillLp);
         body.addView(barWrap);                   // child 2
 
         // ---------- dock: clock under the 360 window, icons under the bar
@@ -1330,24 +1337,39 @@ public class MainActivity extends Activity {
         boolean scrim = cfg.getBoolean("showStatus", false) && cfg.getInt("statusStyle", 1) == 1;
         statusScrim.setVisibility(scrim ? View.VISIBLE : View.GONE);
         rootFrame.addView(statusScrim, new FrameLayout.LayoutParams(-1, dp(64), Gravity.TOP));
+        cover = new View(this);          // black until the map has had time to draw (no white tiles)
+        cover.setBackgroundColor(Color.BLACK);
+        rootFrame.addView(cover, new FrameLayout.LayoutParams(-1, -1));
         setContentView(rootFrame);
+    }
+
+    private View cover;
+
+    private void fadeCover(long delay) {
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                final View c = cover;
+                if (c == null) return;
+                cover = null;
+                c.animate().alpha(0f).setDuration(450).withEndAction(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (c.getParent() instanceof ViewGroup) ((ViewGroup) c.getParent()).removeView(c);
+                    }
+                }).start();
+            }
+        }, delay);
     }
 
     private FrameLayout cell() {
         FrameLayout f = new FrameLayout(this);
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(cTileFill);
-        g.setStroke(Math.max(1, rdp(1)), cTileStroke);
-        g.setCornerRadius(rdp(tileRadius));
-        f.setBackground(g);
-        f.setClickable(true);
+        f.setClickable(true);   // one rounded bar holds all cells (see barWrap), so no tile of its own
         return f;
     }
 
     private LinearLayout.LayoutParams barLp() {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1f);
-        int m = rdp(tileGap) / 2;
-        lp.setMargins(m, m, m, m);
         return lp;
     }
 
@@ -1658,11 +1680,11 @@ public class MainActivity extends Activity {
         if (kmh >= 120f) col = 0xFFFF3B30;
         else if (kmh >= 80f) col = 0xFFFFBE1E;
         else col = 0xFFE6ECF2;
-        int glowA = kmh >= 80f ? 0xB0 : 0x28;
+        int glowA = kmh >= 80f ? 0xB0 : 0x00;
         int c = (glowA << 24) | (col & 0x00FFFFFF);
         lightGlow.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                 new int[]{c, 0x00000000}));
-        lightLine.setBackgroundColor(kmh >= 80f ? col : 0x40E6ECF2);
+        lightLine.setBackgroundColor(kmh >= 80f ? col : 0x00000000);
     }
 
     // ------------------------------------------------------------------ navigation app + map style
@@ -1710,6 +1732,7 @@ public class MainActivity extends Activity {
                     "No offline map yet\nOpen Settings > Map and choose a .map file");
         }
         swapHost(h);
+        fadeCover(1100);
     }
 
     /** Opens the navigation app (Google Maps unless another one was chosen in settings). */
@@ -1835,6 +1858,7 @@ public class MainActivity extends Activity {
         ytPauseGlyph = new Glyph(this, Glyph.PAUSE);
         ytPauseGlyph.setColor(WHITE);
         ytPauseGlyph.setFrac(0.55f);
+        if (vigStrength > 0) ytPane.addView(new VignetteView(this), new FrameLayout.LayoutParams(-1, -1));
         ytPlayBtn.addView(ytPlayGlyph, new FrameLayout.LayoutParams(-1, -1));
         ytPlayBtn.addView(ytPauseGlyph, new FrameLayout.LayoutParams(-1, -1));
         ytPlayBtn.setOnClickListener(new View.OnClickListener() {
@@ -2178,53 +2202,92 @@ public class MainActivity extends Activity {
         return apps;
     }
 
-    /** A button that opens a tick-list of apps and stores the chosen packages (comma separated) under key. */
-    private Button appsButton(final String title, final String key) {
-        final Button b = flat("");
-        final Runnable refresh = new Runnable() {
-            @Override
-            public void run() {
-                String v = cfg.getString(key, "");
-                int n = v.length() == 0 ? 0 : v.split(",").length;
-                b.setText(title + " (" + n + " chosen)");
-            }
-        };
-        refresh.run();
+    private boolean inList(String key, String pkg) {
+        return ("," + cfg.getString(key, "") + ",").contains("," + pkg + ",");
+    }
+
+    private void setInList(String key, String pkg, boolean on) {
+        String[] parts = cfg.getString(key, "").split(",");
+        StringBuilder sb = new StringBuilder();
+        for (String p : parts) {
+            if (p.length() == 0 || p.equals(pkg)) continue;
+            if (sb.length() > 0) sb.append(',');
+            sb.append(p);
+        }
+        if (on) {
+            if (sb.length() > 0) sb.append(',');
+            sb.append(pkg);
+        }
+        cfg.edit().putString(key, sb.toString()).apply();
+    }
+
+    /** Like NetGuard: one row per app with F (frame), S (shield bar), B (floating buttons) and All. */
+    private Button exclusionsButton() {
+        final Button b = flat("Excluded apps (frame / shield bar / floating buttons)");
         b.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 final List<ResolveInfo> apps = launchableApps();
                 final PackageManager pm = getPackageManager();
-                String cur = "," + cfg.getString(key, "") + ",";
-                CharSequence[] names = new CharSequence[apps.size()];
-                final boolean[] on = new boolean[apps.size()];
-                for (int i = 0; i < names.length; i++) {
-                    names[i] = apps.get(i).loadLabel(pm);
-                    on[i] = cur.contains("," + apps.get(i).activityInfo.packageName + ",");
+                final String[] keys = {"frameEx", "shieldEx", "floatEx"};
+                String[] heads = {"F", "S", "B", "All"};
+                LinearLayout col = new LinearLayout(MainActivity.this);
+                col.setOrientation(LinearLayout.VERTICAL);
+                LinearLayout hd = new LinearLayout(MainActivity.this);
+                hd.setPadding(rdp(12), rdp(6), rdp(12), rdp(6));
+                TextView hl = new TextView(MainActivity.this);
+                hl.setText("Tick = hide there");
+                hl.setTextColor(WHITE);
+                hd.addView(hl, new LinearLayout.LayoutParams(0, -2, 1f));
+                for (String h : heads) {
+                    TextView t = new TextView(MainActivity.this);
+                    t.setText(h);
+                    t.setTextColor(CHROME);
+                    t.setGravity(Gravity.CENTER);
+                    hd.addView(t, new LinearLayout.LayoutParams(rdp(64), -2));
                 }
-                new android.app.AlertDialog.Builder(MainActivity.this, android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK)
-                        .setTitle(title)
-                        .setMultiChoiceItems(names, on, new DialogInterface.OnMultiChoiceClickListener() {
+                col.addView(hd);
+                for (final ResolveInfo ri : apps) {
+                    final String pkg = ri.activityInfo.packageName;
+                    LinearLayout row = new LinearLayout(MainActivity.this);
+                    row.setGravity(Gravity.CENTER_VERTICAL);
+                    row.setPadding(rdp(12), rdp(2), rdp(12), rdp(2));
+                    ImageView iv = new ImageView(MainActivity.this);
+                    iv.setImageDrawable(ri.loadIcon(pm));
+                    row.addView(iv, new LinearLayout.LayoutParams(rdp(34), rdp(34)));
+                    TextView tv = new TextView(MainActivity.this);
+                    tv.setText(ri.loadLabel(pm));
+                    tv.setTextColor(WHITE);
+                    tv.setTextSize(16);
+                    tv.setPadding(rdp(10), 0, 0, 0);
+                    row.addView(tv, new LinearLayout.LayoutParams(0, -2, 1f));
+                    final CheckBox[] cb = new CheckBox[4];
+                    for (int k = 0; k < 4; k++) {
+                        cb[k] = new CheckBox(MainActivity.this);
+                        if (k < 3) cb[k].setChecked(inList(keys[k], pkg));
+                        row.addView(cb[k], new LinearLayout.LayoutParams(rdp(64), -2));
+                        final int kk = k;
+                        cb[k].setOnCheckedChangeListener(new android.widget.CompoundButton.OnCheckedChangeListener() {
                             @Override
-                            public void onClick(DialogInterface d, int which, boolean checked) {
-                                on[which] = checked;
-                            }
-                        })
-                        .setPositiveButton("Done", new DialogInterface.OnClickListener() {
-                            @Override
-                            public void onClick(DialogInterface d, int w) {
-                                StringBuilder sb = new StringBuilder();
-                                for (int i = 0; i < on.length; i++) {
-                                    if (on[i]) {
-                                        if (sb.length() > 0) sb.append(',');
-                                        sb.append(apps.get(i).activityInfo.packageName);
+                            public void onCheckedChanged(android.widget.CompoundButton c, boolean on) {
+                                if (kk < 3) {
+                                    setInList(keys[kk], pkg, on);
+                                } else if (c.isPressed()) {
+                                    for (int j = 0; j < 3; j++) {
+                                        cb[j].setChecked(on);
                                     }
                                 }
-                                cfg.edit().putString(key, sb.toString()).apply();
-                                refresh.run();
                             }
-                        })
-                        .setNegativeButton("Cancel", null)
+                        });
+                    }
+                    col.addView(row);
+                }
+                ScrollView sv = new ScrollView(MainActivity.this);
+                sv.addView(col);
+                new android.app.AlertDialog.Builder(MainActivity.this, android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK)
+                        .setTitle("Excluded apps")
+                        .setView(sv)
+                        .setPositiveButton("Done", null)
                         .show();
             }
         });
@@ -2936,7 +2999,6 @@ public class MainActivity extends Activity {
         label(l, "The sun/moon button in the bottom bar switches between your choice and always dark.");
         final EditText vignette = numField(l, "Vignette strength in percent (0 = off; edges of the map, widget and bars)", vigStrength);
         final EditText tileRad = numField(l, "Tile corner roundness in dp (0 = sharp)", tileRadius);
-        final EditText tileGapF = numField(l, "Gap between tiles in dp", tileGap);
         final EditText glowF = numField(l, "Icon glow in percent (0 = off)", iconGlow);
         label(l, "Theme file: colours, icons, menus and layout in one file. Export a template to edit it or give it to a designer, then import it.");
         Button expT = flat("Export theme template");
@@ -3083,34 +3145,12 @@ public class MainActivity extends Activity {
             }
         });
         addFull(l, usage);
-        label(l, "Black frame (margin and rounded corners)");
-        final RadioGroup frG = radios(l, new String[]{"Everywhere", "Only in the chosen apps", "Everywhere except the chosen apps"},
-                9400, cfg.getInt("frameMode", 0));
-        addFull(l, appsButton("Choose frame apps", "frameApps"));
-        label(l, "Floating buttons");
-        final RadioGroup flG = radios(l, new String[]{"Everywhere", "Only in the chosen apps", "Everywhere except the chosen apps"},
-                9500, cfg.getInt("floatMode", 0));
-        addFull(l, appsButton("Choose floating-button apps", "floatApps"));
-        label(l, "Touch shield: blocks touches in one app (for example the 360 app) so the camera view cannot be changed by accident. "
-                + "It never shows on the home screen.");
-        final RadioGroup shG = radios(l, new String[]{"Off", "Bottom strip only", "Whole screen"}, 9600, cfg.getInt("shieldMode", 0));
-        final EditText shH = numField(l, "Strip height in percent of the screen", cfg.getInt("shieldH", 14));
-        final String[] shApp = {cfg.getString("shieldApp", "")};
-        final Button shBtn = flat("Shield app: " + (shApp[0].length() == 0 ? "the 360 app" : shApp[0]));
-        shBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                chooseApp("Shield app", new Pick() {
-                    @Override
-                    public void onPick(String pkg, String label) {
-                        shApp[0] = pkg;
-                        shBtn.setText("Shield app: " + label);
-                        cfg.edit().putString("shieldApp", pkg).apply();
-                    }
-                });
-            }
-        });
-        addFull(l, shBtn);
+        final CheckBox shieldOn = check(l, "Show the shield bar in other apps (a bar at the bottom with 360 and the primary contact; touches do not pass through it)", cfg.getBoolean("shieldOn", false));
+        final EditText shH = numField(l, "Shield bar height in percent of the screen (8 to 30)", cfg.getInt("shieldH", 15));
+        final EditText shA = numField(l, "Shield bar angle in degrees (0 = plain flat bar)", cfg.getInt("shieldAngle", 15));
+        addFull(l, exclusionsButton());
+        label(l, "In the list, tick where each app should NOT show the frame (F), the shield bar (S) or the floating buttons (B). "
+                + "The launcher's own home screen never shows the shield bar.");
 
         l = newSec(secNames, secViews, "Calling");
         final RadioGroup rg = radios(l, new String[]{"Call straight away", "Open the dial screen first",
@@ -3220,10 +3260,9 @@ public class MainActivity extends Activity {
                                 .putInt("floatColor", checkedIdx(colG, 6000, 4, 0))
                                 .putInt("muteMode", checkedIdx(muteG, 9200, 5, 0))
                                 .putInt("floatSecond", checkedIdx(secG, 9300, 2, 0))
-                                .putInt("frameMode", checkedIdx(frG, 9400, 3, 0))
-                                .putInt("floatMode", checkedIdx(flG, 9500, 3, 0))
-                                .putInt("shieldMode", checkedIdx(shG, 9600, 3, 0))
-                                .putInt("shieldH", Math.max(5, Math.min(60, intOf(shH, 14))))
+                                .putBoolean("shieldOn", shieldOn.isChecked())
+                                .putInt("shieldH", Math.max(8, Math.min(30, intOf(shH, 15))))
+                                .putInt("shieldAngle", Math.max(0, Math.min(60, intOf(shA, 15))))
                                 .putString("muteAction", muteAction.getText().toString().trim())
                                 .putInt("callMode", checkedIdx(rg, 1000, 3, 0))
                                 .putString("macroAction", macro.getText().toString().trim())
@@ -3237,7 +3276,6 @@ public class MainActivity extends Activity {
                         // theme values stay in charge unless a number was changed here
                         keepOrRemove(ed, "vignette", Math.max(0, Math.min(100, intOf(vignette, vigStrength))), themeJ.optInt("vignette", 50));
                         keepOrRemove(ed, "tileRadius", Math.max(0, Math.min(40, intOf(tileRad, tileRadius))), themeJ.optInt("tileRadius", 8));
-                        keepOrRemove(ed, "tileGap", Math.max(0, Math.min(30, intOf(tileGapF, tileGap))), themeJ.optInt("tileGap", 6));
                         keepOrRemove(ed, "iconGlow", Math.max(0, Math.min(100, intOf(glowF, iconGlow))), themeJ.optInt("iconGlow", 45));
                         StringBuilder dk = new StringBuilder();
                         for (int k = 0; k < DOCK_IDS.length; k++) {

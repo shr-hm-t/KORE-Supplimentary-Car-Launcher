@@ -179,6 +179,7 @@ final class MapsforgeHost implements MapHost {
         AndroidGraphicFactory.createInstance(a.getApplication());
         mv = new org.mapsforge.map.android.view.MapView(a);
         mv.setClickable(true);
+        mv.setBackgroundColor(night ? 0xFF000000 : 0xFFE9EDF1);
         mv.getMapScaleBar().setVisible(false);
         mv.setBuiltInZoomControls(false);
         mv.getModel().mapViewPosition.setZoomLevel((byte) zoom);

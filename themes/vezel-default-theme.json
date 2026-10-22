@@ -51,7 +51,7 @@
   },
   "vignette": 50,
   "tileRadius": 8,
-  "tileGap": 6,
+  "tileGap": 0,
   "iconGlow": 45,
   "layout": {
     "pipW": 0.423,
