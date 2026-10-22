@@ -1758,7 +1758,21 @@ public class MainActivity extends Activity {
         String mf = cfg.getString("mapFile", "");
         File mfile = new File(mf);
         MapHost h = null;
-        if (mf.length() > 0 && mfile.exists()) {
+        String mb = cfg.getString("mbFile", "");
+        if (cfg.getInt("mapEngine", 0) == 1 && mb.length() > 0 && new File(mb).exists()) {
+            try {
+                h = new MapLibreHost(this, new File(mb), mapTouch, zoom - 1, cfg.getInt("mapTilt", 55),
+                        ThemeFile.col(mapPal, "ground", night ? 0xFF0A1220 : 0xFFE9EEF3),
+                        ThemeFile.col(mapPal, "water", night ? 0xFF0E2238 : 0xFFC6D8E8),
+                        ThemeFile.col(mapPal, "road", night ? 0xFF4F6A86 : 0xFF7B8EA3),
+                        ThemeFile.col(mapPal, "major", night ? 0xFF9FB8D4 : 0xFF33495F),
+                        ThemeFile.col(mapPal, "building", night ? 0xFF26384D : 0xFFB7C3CF), cAccent);
+            } catch (Throwable t) {
+                h = null;
+                Toast.makeText(this, "The 3D map could not start, using the normal map", Toast.LENGTH_LONG).show();
+            }
+        }
+        if (h == null && mf.length() > 0 && mfile.exists()) {
             File themeFile = cfg.getInt("mapStyle", 0) == 0 ? writeMapTheme() : null;
             try {
                 h = new MapsforgeHost(this, mfile, mapTouch, night, themeFile, cAccent, (int) zoom - 1, textScale);
@@ -3107,6 +3121,23 @@ public class MainActivity extends Activity {
         label(l, "Map style");
         final RadioGroup styG = radios(l, new String[]{"Line art (thin pale roads, follows the theme)",
                 "Standard (Mapsforge colours)"}, 5000, cfg.getInt("mapStyle", 0));
+        label(l, "Map engine");
+        final RadioGroup engG = radios(l, new String[]{"Mapsforge, flat (default, uses a .map file)",
+                "MapLibre 3D (uses a .mbtiles vector file, tilted view with 3D buildings)"}, 5100, cfg.getInt("mapEngine", 0));
+        final EditText tilt = numField(l, "3D tilt in degrees (0 = flat, 55 = normal)", cfg.getInt("mapTilt", 55));
+        TextView curMb = new TextView(this);
+        String mbf = cfg.getString("mbFile", "");
+        curMb.setText("3D map file: " + (mbf.length() == 0 ? "none" : new File(mbf).getName()));
+        curMb.setTextColor(GREY);
+        l.addView(curMb);
+        Button pickMb = flat("Choose 3D map file (.mbtiles)");
+        pickMb.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                pickFile(REQ_MB);
+            }
+        });
+        addFull(l, pickMb);
         final EditText zoom = numField(l, "Map zoom (12 = far, 19 = very close; place names show less when very close)", cfg.getInt("mapZoom", 18));
         final EditText mapText = numField(l, "Map text size in percent (100 = normal, 150 to 200 reads easier, 300 is the most)", cfg.getInt("mapText", 150));
         final CheckBox showInfo = check(l, "Show turn info and city name on the map", cfg.getBoolean("showInfo", true));
@@ -3311,6 +3342,8 @@ public class MainActivity extends Activity {
                                 .putInt("floatColor", checkedIdx(colG, 6000, 4, 0))
                                 .putInt("muteMode", checkedIdx(muteG, 9200, 5, 0))
                                 .putInt("floatSecond", checkedIdx(secG, 9300, 2, 0))
+                                .putInt("mapEngine", checkedIdx(engG, 5100, 2, 0))
+                                .putInt("mapTilt", Math.max(0, Math.min(70, intOf(tilt, 55))))
                                 .putBoolean("shieldOn", shieldOn.isChecked())
                                 .putInt("shieldH", Math.max(8, Math.min(30, intOf(shH, 15))))
                                 .putInt("shieldAngle", Math.max(0, Math.min(60, intOf(shA, 15))))
@@ -3466,7 +3499,18 @@ public class MainActivity extends Activity {
 
     // ------------------------------------------------------------------ offline map file
 
-    private static final int REQ_MAP = 77;
+    private static final int REQ_MAP = 77, REQ_MB = 80;
+
+    private void pickFile(int req) {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("*/*");
+        try {
+            startActivityForResult(i, req);
+        } catch (Exception e) {
+            Toast.makeText(this, "No file picker on this device", Toast.LENGTH_LONG).show();
+        }
+    }
 
     private void pickMapFile() {
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -3483,7 +3527,9 @@ public class MainActivity extends Activity {
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
         if (req == REQ_MAP && res == RESULT_OK && data != null && data.getData() != null) {
-            copyMap(data.getData());
+            copyMap(data.getData(), "offline.map", "mapFile");
+        } else if (req == REQ_MB && res == RESULT_OK && data != null && data.getData() != null) {
+            copyMap(data.getData(), "offline.mbtiles", "mbFile");
         } else if (req == REQ_THEME && res == RESULT_OK && data != null && data.getData() != null) {
             importTheme(data.getData());
         } else if (req == REQ_SETTINGS && res == RESULT_OK && data != null && data.getData() != null) {
@@ -3491,7 +3537,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void copyMap(final Uri uri) {
+    private void copyMap(final Uri uri, final String fileName, final String key) {
         Toast.makeText(this, "Importing the map, please wait...", Toast.LENGTH_LONG).show();
         new Thread(new Runnable() {
             @Override
@@ -3500,7 +3546,7 @@ public class MainActivity extends Activity {
                     File dir = getExternalFilesDir("maps");
                     if (dir == null) dir = new File(getFilesDir(), "maps");
                     dir.mkdirs();
-                    File out = new File(dir, "offline.map");
+                    File out = new File(dir, fileName);
                     InputStream in = getContentResolver().openInputStream(uri);
                     OutputStream os = new FileOutputStream(out);
                     byte[] buf = new byte[1 << 16];
@@ -3508,7 +3554,7 @@ public class MainActivity extends Activity {
                     while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
                     os.close();
                     in.close();
-                    cfg.edit().putString("mapFile", out.getAbsolutePath()).apply();
+                    cfg.edit().putString(key, out.getAbsolutePath()).apply();
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
