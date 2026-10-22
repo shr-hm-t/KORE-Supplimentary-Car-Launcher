@@ -6,6 +6,7 @@
 - New app icon.
 - The welcome screen asks whether your unit has a 360 window (PIP).
 - Wider Tesla-style speed glow along the top and sides.
+- Optional 3D map (MapLibre): choose it in Settings > Map and pick an offline .mbtiles vector file (OpenMapTiles layout). Tilted view with 3D buildings; no place names yet. Mapsforge flat map stays the default.
 
 ## 1.3 (compared with 1.1)
 

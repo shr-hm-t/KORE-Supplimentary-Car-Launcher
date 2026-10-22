@@ -9,7 +9,7 @@ Built and tested on a Honda Vezel (2025) with a Nakamichi NAM5850 aftermarket un
 ## Features
 
 - **Home screen:** map or YouTube widget on top, a bar with the 360 camera window and three contact tiles, and a black dock with the clock, Radio, map/YouTube switch, theme toggle, app drawer and settings.
-- **Map:** offline Mapsforge `.map` file only, in a thin "line art" style (or the standard style). Zoom, text size and vignette are adjustable. For turn-by-turn navigation use the Navigate button (Google Maps by default).
+- **Map:** an optional 3D view (MapLibre, offline `.mbtiles` vector file) and the default flat offline Mapsforge `.map` file only, in a thin "line art" style (or the standard style). Zoom, text size and vignette are adjustable. For turn-by-turn navigation use the Navigate button (Google Maps by default).
 - **Navigation info:** reads the navigation notification (Google Maps, Waze, OsmAnd). Settings > Map has a test button.
 - **360 camera:** opens automatically when slow (GPS speed), optional retry after boot.
 - **YouTube widget:** notification or embedded page, thumbnail only, play/pause.
