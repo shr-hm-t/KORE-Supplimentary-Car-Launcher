@@ -1,8 +1,8 @@
 # Release notes
 
-## 1.2 (compared with 1.1)
+## 1.3 (compared with 1.1)
 
-Note: the 1.1 release was built from a commit whose app version already said 1.2 inside, so the installed 1.1 APK shows "1.2" in Android's app info. This release has version code 7.
+Note: the 1.1 release was built from a commit whose app version already said 1.2 inside, so the installed 1.1 APK shows "1.2" in Android's app info. This release is 1.3 (version code 8).
 
 - Start-up: black screen first, then the interface, then a fade-in once the map has had time to draw (no white tiles). Map background no longer flashes white in the dark theme.
 - The faint white glow along the top edge is gone; the speed light now only appears from 80 km/h.
