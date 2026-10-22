@@ -1,6 +1,6 @@
 # Theming
 
-Settings > Look > Export theme writes `vezel-theme.json` to the app's files folder (Android/data/com.vezel.launcher/files/theme). Edit it, then Settings > Look > Import theme. Keys you leave out keep their default. `themes/vezel-default-theme.json` is the full default.
+Settings > Look > Export theme writes `vezel-theme.json` to the app's files folder (Android/data/com.kore.launcher/files/theme). Edit it, then Settings > Look > Import theme. Keys you leave out keep their default. `themes/vezel-default-theme.json` is the full default.
 
 Colours are `#RRGGBB` or `#AARRGGBB`.
 

@@ -1,4 +1,4 @@
-package com.vezel.launcher;
+package com.kore.launcher;
 
 import android.Manifest;
 import android.app.Activity;
@@ -2546,7 +2546,7 @@ public class MainActivity extends Activity {
             cfg.edit().putInt("guide", 2).apply();
             String en = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
             if (en == null || !en.contains(getPackageName())) {
-                Toast.makeText(this, "Switch Vezel Launcher ON (turn-by-turn info), then press Back", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Switch KORE ON (turn-by-turn info), then press Back", Toast.LENGTH_LONG).show();
                 try {
                     startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));
                     return;
@@ -2558,13 +2558,22 @@ public class MainActivity extends Activity {
         if (g == 2) {
             cfg.edit().putInt("guide", 3).apply();
             if (!AppWatcher.granted(this)) {
-                Toast.makeText(this, "Switch Vezel Launcher ON (needed only for per-app rules), then press Back", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Switch KORE ON (needed only for per-app rules), then press Back", Toast.LENGTH_LONG).show();
                 try {
                     startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS));
                 } catch (Exception ignored) {
                 }
             }
         }
+    }
+
+    private void recreateSoon() {
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (!isFinishing()) recreate();
+            }
+        }, 400);
     }
 
     private void startGuide() {
@@ -2591,25 +2600,28 @@ public class MainActivity extends Activity {
         m.setText("Welcome! A few quick steps (you can redo any of them later in settings, gear icon):\n\n"
                 + "1. Choose the driver's seat side below. The floating buttons start on that side.\n"
                 + "2. Allow \"display over other apps\" when asked (for the frame and floating buttons).\n"
-                + "3. You will then be taken to Notification access (turn-by-turn info from Google Maps) and Usage access (per-app rules). Switch Vezel Launcher ON in each and press Back.");
+                + "3. You will then be taken to Notification access (turn-by-turn info from Google Maps) and Usage access (per-app rules). Switch KORE ON in each and press Back.");
         m.setTextColor(WHITE);
         m.setTextSize(16);
         m.setPadding(0, rdp(10), 0, rdp(10));
         l.addView(m);
-        Panel p = new Panel("Welcome to Vezel Launcher", l, true);
+        final CheckBox pipChk = check(l, "My unit shows a 360 camera window (PIP) over the launcher. Untick for the simple full-width layout.", true);
+        Panel p = new Panel("Welcome to KORE", l, true);
         p.d.setCancelable(false);
         p.d.setCanceledOnTouchOutside(false);
         p.button("Driver on the left", new Runnable() {
             @Override
             public void run() {
-                cfg.edit().putInt("seat", 1).remove("floatX").remove("floatY").apply();
+                cfg.edit().putInt("seat", 1).putBoolean("pipOn", pipChk.isChecked()).remove("floatX").remove("floatY").apply();
                 startGuide();
+                if (!pipChk.isChecked()) recreateSoon();
             }
         }).button("Driver on the right", new Runnable() {
             @Override
             public void run() {
-                cfg.edit().putInt("seat", 0).remove("floatX").remove("floatY").apply();
+                cfg.edit().putInt("seat", 0).putBoolean("pipOn", pipChk.isChecked()).remove("floatX").remove("floatY").apply();
                 startGuide();
+                if (!pipChk.isChecked()) recreateSoon();
             }
         }).show();
     }
@@ -3205,7 +3217,7 @@ public class MainActivity extends Activity {
         final EditText macro = field(l, "Macro broadcast action (only for macro mode)", cfg.getString("macroAction", ""), InputType.TYPE_CLASS_TEXT);
 
         l = newSec(secNames, secViews, "Steering-wheel voice button");
-        label(l, "Easiest: in your unit's voice or Speech app list (for example TW Radio Select, Speech) pick \"Vezel Call\". Pressing the wheel button then calls the primary contact.");
+        label(l, "Easiest: in your unit's voice or Speech app list (for example TW Radio Select, Speech) pick \"KORE Call\". Pressing the wheel button then calls the primary contact.");
         label(l, "If the unit sends a key to the launcher itself:");
         final RadioGroup voiceG = radios(l, new String[]{"Call the primary contact", "Open the voice assistant app",
                 "Send a macro broadcast"}, 2000, cfg.getInt("voiceMode", 0));
@@ -3232,7 +3244,7 @@ public class MainActivity extends Activity {
         addFull(l, impS);
 
         l = newSec(secNames, secViews, "About");
-        TextView ab = label(l, "Vezel Launcher  v" + versionName());
+        TextView ab = label(l, "KORE  v" + versionName());
         ab.setTextColor(cText);
         ab.setTextSize(18);
         label(l, "A home screen for the Honda Vezel / HR-V head unit: map, 360 camera, radio, YouTube and calls on one screen.");

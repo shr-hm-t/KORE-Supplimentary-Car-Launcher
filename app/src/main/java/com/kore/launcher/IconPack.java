@@ -1,4 +1,4 @@
-package com.vezel.launcher;
+package com.kore.launcher;
 
 import android.graphics.Canvas;
 import android.graphics.Paint;

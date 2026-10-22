@@ -1,5 +1,12 @@
 # Release notes
 
+## 1.4 (compared with 1.3)
+
+- Package name is now com.kore.launcher (a new app: it does not update over the old one; set KORE as the home app again and redo the permissions). The APK is called KORE.apk.
+- New app icon.
+- The welcome screen asks whether your unit has a 360 window (PIP).
+- Wider Tesla-style speed glow along the top and sides.
+
 ## 1.3 (compared with 1.1)
 
 Note: the 1.1 release was built from a commit whose app version already said 1.2 inside, so the installed 1.1 APK shows "1.2" in Android's app info. This release is 1.3 (version code 8).
