@@ -5,7 +5,7 @@
 Note: the 1.1 release was built from a commit whose app version already said 1.2 inside, so the installed 1.1 APK shows "1.2" in Android's app info. This release is 1.3 (version code 8).
 
 - Start-up: black screen first, then the interface, then a fade-in once the map has had time to draw (no white tiles). Map background no longer flashes white in the dark theme.
-- The faint white glow along the top edge is gone; the speed light now only appears from 80 km/h.
+- Tesla-style speed glow: a wider, brighter light along the top and both sides of the map (accent colour normally, amber from 80 km/h, red from 120 km/h).
 - The bottom bar and the contacts bar are each one rounded bar (no separate tiles, no tile gap).
 - The play button in the YouTube widget is no longer hidden behind the vignette.
 - New shield bar: a black bar at the bottom of other apps with the 360 and primary-contact buttons and an adjustable angle; it blocks touches. The frame, shield bar and floating buttons each have a NetGuard-style exclusion list (Settings > Per-app rules). Needs Usage access.

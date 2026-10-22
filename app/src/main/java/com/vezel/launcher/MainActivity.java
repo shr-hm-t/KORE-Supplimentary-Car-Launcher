@@ -149,7 +149,8 @@ public class MainActivity extends Activity {
     private ImageView navArrow;
     private TextView navTitle, navText, cityText, subText, hintText;
     private LinearLayout infoPanel;
-    private View lightGlow, lightLine;
+    private SpeedGlow lightGlow;
+    private View lightLine;
     private Badge[] contactBadge = new Badge[3];
     private TextView slotDate, slotHeading, slotAlt, slotGps;
     private Glyph themeGlyph;
@@ -1133,8 +1134,8 @@ public class MainActivity extends Activity {
         buildYtPane(top);
 
         // speed light from the top edge (yellow from 80 km/h, red from 120 km/h)
-        lightGlow = new View(this);
-        top.addView(lightGlow, new FrameLayout.LayoutParams(-1, dp(70), Gravity.TOP));
+        lightGlow = new SpeedGlow(this);
+        top.addView(lightGlow, new FrameLayout.LayoutParams(-1, -1));
         lightLine = new View(this);
         top.addView(lightLine, new FrameLayout.LayoutParams(-1, dp(3), Gravity.TOP));
         setLight(0);
@@ -1675,16 +1676,54 @@ public class MainActivity extends Activity {
         }
     };
 
+    /** Soft coloured light along the top and both sides of the map (calm below 80 km/h, amber from 80, red from 120). */
+    private class SpeedGlow extends View {
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private int color = 0;
+        private int alpha = 0;
+
+        SpeedGlow(Context c) {
+            super(c);
+        }
+
+        void set(int col, int a) {
+            color = col;
+            alpha = a;
+            invalidate();
+        }
+
+        @Override
+        protected void onDraw(Canvas c) {
+            float w = getWidth(), h = getHeight();
+            if (w <= 0 || alpha <= 0) return;
+            int strong = (alpha << 24) | (color & 0x00FFFFFF);
+            int mid = ((alpha / 3) << 24) | (color & 0x00FFFFFF);
+            int none = color & 0x00FFFFFF;
+            float th = h * 0.34f, sw = w * 0.14f;
+            p.setShader(new LinearGradient(0, 0, 0, th, new int[]{strong, mid, none}, new float[]{0f, 0.4f, 1f}, Shader.TileMode.CLAMP));
+            c.drawRect(0, 0, w, th, p);
+            p.setShader(new LinearGradient(0, 0, sw, 0, new int[]{strong, none}, null, Shader.TileMode.CLAMP));
+            c.drawRect(0, 0, sw, h, p);
+            p.setShader(new LinearGradient(w, 0, w - sw, 0, new int[]{strong, none}, null, Shader.TileMode.CLAMP));
+            c.drawRect(w - sw, 0, w, h, p);
+            p.setShader(null);
+        }
+    }
+
     private void setLight(float kmh) {
-        int col;
-        if (kmh >= 120f) col = 0xFFFF3B30;
-        else if (kmh >= 80f) col = 0xFFFFBE1E;
-        else col = 0xFFE6ECF2;
-        int glowA = kmh >= 80f ? 0xB0 : 0x00;
-        int c = (glowA << 24) | (col & 0x00FFFFFF);
-        lightGlow.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{c, 0x00000000}));
-        lightLine.setBackgroundColor(kmh >= 80f ? col : 0x00000000);
+        int col, a;
+        if (kmh >= 120f) {
+            col = 0xFFFF3B30;
+            a = 0xE0;
+        } else if (kmh >= 80f) {
+            col = 0xFFFFBE1E;
+            a = 0xC8;
+        } else {
+            col = cAccent;
+            a = 0x70;
+        }
+        lightGlow.set(col, a);
+        lightLine.setBackgroundColor((0xFF << 24) | (col & 0x00FFFFFF));
     }
 
     // ------------------------------------------------------------------ navigation app + map style
