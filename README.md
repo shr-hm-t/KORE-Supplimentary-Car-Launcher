@@ -65,7 +65,7 @@ Everything stays on the device. The map is fully offline. The only network reque
 ## Credits
 
 - [Claude](https://claude.ai) (Anthropic): code, build setup, design iterations, documentation.
-- ChatGPT (OpenAI) and Gemini (Google): design ideas and early icons.
+- ChatGPT (OpenAI) and Gemini (Google) and grok as well: design ideas and early icons.
 - Idea, direction, hardware testing and feedback: the project owner.
 
 Map rendering by [Mapsforge](https://github.com/mapsforge/mapsforge). Map data © OpenStreetMap contributors.
