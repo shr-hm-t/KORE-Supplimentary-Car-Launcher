@@ -22,13 +22,15 @@
     <application
         android:allowBackup="false"
         android:requestLegacyExternalStorage="true"
-        android:icon="@mipmap/ic_launcher"
-        android:label="KORE"
+        android:icon="@mipmap/ic_installer"
+        android:label="Rehome Installer"
         android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
         android:usesCleartextTraffic="false">
 
         <activity
             android:name=".MainActivity"
+            android:icon="@mipmap/ic_launcher"
+            android:label="Rehome: for you"
             android:directBootAware="true"
             android:exported="true"
             android:launchMode="singleTask"
@@ -46,7 +48,8 @@
             android:name=".AssistActivity"
             android:exported="true"
             android:excludeFromRecents="true"
-            android:label="KORE Call"
+            android:icon="@mipmap/ic_call"
+            android:label="Rehome: Call Plugin"
             android:theme="@android:style/Theme.Translucent.NoTitleBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -66,7 +69,7 @@
         <service
             android:name=".NavListener"
             android:exported="true"
-            android:label="KORE navigation info"
+            android:label="Rehome navigation info"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />

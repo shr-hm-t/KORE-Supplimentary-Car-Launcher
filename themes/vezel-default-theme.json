@@ -50,7 +50,7 @@
     "sub": "#9BA1A8"
   },
   "vignette": 50,
-  "tileRadius": 8,
+  "tileRadius": 30,
   "tileGap": 0,
   "iconGlow": 45,
   "layout": {

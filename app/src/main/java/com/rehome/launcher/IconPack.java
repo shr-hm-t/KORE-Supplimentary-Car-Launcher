@@ -1,4 +1,4 @@
-package com.kore.launcher;
+package com.rehome.launcher;
 
 import android.graphics.Canvas;
 import android.graphics.Paint;

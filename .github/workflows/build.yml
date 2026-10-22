@@ -37,16 +37,20 @@ jobs:
       - name: Build release APK
         run: gradle assembleRelease --no-daemon
       - name: Name the APK
-        run: cp app/build/outputs/apk/release/app-release.apk KORE.apk
+        run: cp app/build/outputs/apk/release/app-release.apk Rehome.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: KORE-apk
-          path: KORE.apk
+          name: Rehome-apk
+          path: Rehome.apk
       - name: Publish GitHub Release
         if: ${{ github.event.inputs.release_tag != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.event.inputs.release_tag }}" KORE.apk \
-            --title "KORE ${{ github.event.inputs.release_tag }}" \
-            --notes-file RELEASE_NOTES.md
+          TAG="${{ github.event.inputs.release_tag }}"
+          # only this version's section of the release notes (not the whole file)
+          awk -v v="$TAG" '$0 ~ "^## "v"( |$)" {f=1; print; next} /^## /{f=0} f' RELEASE_NOTES.md > notes.md
+          [ -s notes.md ] || awk '/^## /{c++} c==1' RELEASE_NOTES.md > notes.md
+          gh release create "$TAG" Rehome.apk \
+            --title "Rehome $TAG" \
+            --notes-file notes.md

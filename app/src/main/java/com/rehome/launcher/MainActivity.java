@@ -1,4 +1,4 @@
-package com.kore.launcher;
+package com.rehome.launcher;
 
 import android.Manifest;
 import android.app.Activity;
@@ -23,7 +23,9 @@ import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.LayerDrawable;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -55,8 +57,6 @@ import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.ValueCallback;
 import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
 import android.widget.ArrayAdapter;
 import android.widget.BaseAdapter;
 import android.widget.Button;
@@ -119,12 +119,9 @@ public class MainActivity extends Activity {
     private int cRing = 0xFFE2E8EC, cRingFill = 0xFF15171A;
     private int cAccent = 0xFFFF8A1E, cTileFill = 0x59000000, cTileStroke = 0x66FFFFFF, cVig = 0xFF000000;
     private int cMenuTop = 0xFF212B35, cMenuBot = 0xFF0A0E12, cMenuStroke = 0xFF5A6068;
-    private int tileRadius = 8, vigStrength = 50, tileGap = 6, iconGlow = 45;
+    private int tileRadius = 30, vigStrength = 50, tileGap = 6, iconGlow = 45;
     private org.json.JSONObject mapPal;
     private FrameLayout leftPanel;
-    private Button navBtn, ytBackBtn;
-    private View statusScrim;
-    private boolean ytOnEmbed = false;
     private double mslAlt = Double.NaN;
     private long mslTime = 0;
     private Object nmeaListener;
@@ -162,11 +159,6 @@ public class MainActivity extends Activity {
     private TextView ytTitle;
     private FrameLayout ytPlayBtn;
     private Glyph ytPlayGlyph;
-    private Button ytOpenBtn, ytBrowseBtn;
-    private WebView ytWeb;
-    private boolean ytWebLoaded = false;
-    private boolean ytBrowse = false;
-    private String ytCurrentId = "";
     private boolean ytPlayingNow = false;
 
     private long lastGeoTime = 0;
@@ -178,6 +170,19 @@ public class MainActivity extends Activity {
         // older versions saved the vignette and tile roundness for good, which hid the theme file's values
         cfg.edit().remove("vignette").remove("tileRadius").remove("mapEngine").remove("webMapUrl")
                 .remove("orient").putBoolean("migrated11", true).apply();
+    }
+
+    private boolean mirror() {
+        return cfg.getInt("seat", 0) == 1;
+    }
+
+    /** Extended frame: the bottom of the frame grows into a bar with the 360 and primary-contact buttons (simple layout only). */
+    private boolean extOn() {
+        return !pipOn() && cfg.getBoolean("frame", true) && cfg.getBoolean("frameExt", false);
+    }
+
+    private float shieldH() {
+        return Math.max(8, Math.min(30, cfg.getInt("shieldH", 15)));
     }
 
     private boolean pipOn() {
@@ -245,7 +250,7 @@ public class MainActivity extends Activity {
             }
         }
         cfg = getSharedPreferences("cfg", MODE_PRIVATE);
-        scale = Math.max(0.6f, Math.min(1.6f, cfg.getInt("uiScale", 100) / 100f));
+        scale = Math.max(0.6f, Math.min(1.6f, cfg.getInt("uiScale", 130) / 100f));
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         migrateSettings();
         night = computeNight();
@@ -260,19 +265,39 @@ public class MainActivity extends Activity {
             @Override
             public void run() {
                 if (isFinishing() || isDestroyed()) return;
-                buildUi();
-                uiReady = true;
-                requestPerms();
+                // 1) only the services: radio and 360 start first
+                boolean cold = !bootHandled;
                 bootTasks();
-                if (pendingResume) {
-                    pendingResume = false;
-                    resumeWork();
+                // 2) the interface, touch handling, frame and floating buttons follow once the 360 is up
+                long wait = 0;
+                if (cold && cfg.getString("pkg360", "").length() > 0 && cfg.contains("seat")) {
+                    wait = (cfg.getInt("boot360Retry", 5) + cfg.getInt("floatDelay", 5)) * 1000L;
+                }
+                if (wait <= 0) {
+                    buildNow();
+                } else {
+                    handler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            buildNow();
+                        }
+                    }, wait);
                 }
             }
         });
     }
 
-    private boolean uiReady = false, pendingResume = false;
+    private boolean uiReady = false, pendingResume = false, activityResumed = false;
+    private final long createdAt = System.currentTimeMillis();
+
+    private void buildNow() {
+        if (uiReady || isFinishing() || isDestroyed() || lockedBoot) return;
+        buildUi();
+        uiReady = true;
+        requestPerms();
+        if (pendingResume && activityResumed) resumeWork();
+        pendingResume = false;
+    }
 
     private void bootTasks() {
         if (!bootHandled) {
@@ -295,12 +320,12 @@ public class MainActivity extends Activity {
                 }, secs * 1000L);
             }
             // optional second try: if 360 is not on screen some seconds after boot, start it
-            final int retry = cfg.getInt("boot360Retry", 4);
+            final int retry = cfg.getInt("boot360Retry", 5);
             if (retry > 0 && cfg.getString("pkg360", "").length() > 0) {
                 handler.postDelayed(new Runnable() {
                     @Override
                     public void run() {
-                        if (resumed) launchPref("pkg360");
+                        if (activityResumed) launchPref("pkg360");
                     }
                 }, retry * 1000L);
             }
@@ -324,8 +349,11 @@ public class MainActivity extends Activity {
         super.onResume();
         if (lockedBoot) return;
         applyStatusBar();
+        activityResumed = true;
         if (!uiReady) {
             pendingResume = true;
+            // back at the home screen after the 360 had its chance: do not keep waiting
+            if (System.currentTimeMillis() - createdAt > cfg.getInt("boot360Retry", 5) * 1000L + 1500L) buildNow();
             return;
         }
         resumeWork();
@@ -333,7 +361,7 @@ public class MainActivity extends Activity {
 
     private void resumeWork() {
         resumed = true;
-        if (cfg.getInt("guide", 3) < 3) handler.postDelayed(new Runnable() {
+        if (cfg.getInt("guide", 9) < 9) handler.postDelayed(new Runnable() {
             @Override
             public void run() {
                 if (resumed) guideNext();
@@ -378,7 +406,7 @@ public class MainActivity extends Activity {
         super.onPause();
         if (lockedBoot) return;
         resumed = false;
-        pendingResume = false;
+        activityResumed = false;
         if (host != null) host.onPause();
         NavListener.onChange = null;
         handler.removeCallbacks(ticker);
@@ -397,12 +425,6 @@ public class MainActivity extends Activity {
         if (lockedBoot) return;
         stopLocation();
         if (host != null) host.onDestroy();
-        if (ytWeb != null) {
-            try {
-                ytWeb.destroy();
-            } catch (Exception ignored) {
-            }
-        }
     }
 
     /** The back button must not restart the home screen. */
@@ -426,7 +448,7 @@ public class MainActivity extends Activity {
 
     /** True when the dark look should be used. Light mode only ever follows the clock or the sun, never forced. */
     private boolean computeNight() {
-        int mode = cfg.getInt("theme", 0);
+        int mode = cfg.getInt("theme", 2);
         if (mode == 2) return true;
         long ms = System.currentTimeMillis();
         if (mode == 0 && cfg.contains("lat")) {
@@ -493,8 +515,8 @@ public class MainActivity extends Activity {
         cMenuTop = ThemeFile.col(menu, "bgTop", 0xFF212B35);
         cMenuBot = ThemeFile.col(menu, "bgBottom", 0xFF0A0E12);
         cMenuStroke = ThemeFile.col(menu, "stroke", 0xFF5A6068);
-        vigStrength = Math.max(0, Math.min(100, cfg.getInt("vignette", themeJ.optInt("vignette", 50))));
-        tileRadius = Math.max(0, cfg.getInt("tileRadius", themeJ.optInt("tileRadius", 8)));
+        vigStrength = Math.max(0, Math.min(200, cfg.getInt("vignette", themeJ.optInt("vignette", 50))));
+        tileRadius = Math.max(0, cfg.getInt("tileRadius", themeJ.optInt("tileRadius", 30)));
         tileGap = Math.max(0, Math.min(30, cfg.getInt("tileGap", themeJ.optInt("tileGap", 0))));
         iconGlow = Math.max(0, Math.min(100, cfg.getInt("iconGlow", themeJ.optInt("iconGlow", 45))));
         mapPal = pal == null ? null : pal.optJSONObject("map");
@@ -510,7 +532,7 @@ public class MainActivity extends Activity {
     }
 
     private void toggleTheme() {
-        int cur = cfg.getInt("theme", 0);
+        int cur = cfg.getInt("theme", 2);
         if (cur == 2) {
             cfg.edit().putInt("theme", cfg.getInt("themePrev", 0)).apply();
             Toast.makeText(this, "Appearance: automatic", Toast.LENGTH_SHORT).show();
@@ -528,17 +550,12 @@ public class MainActivity extends Activity {
                 | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                 | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
-        int style = cfg.getInt("statusStyle", 1);
         if (show) {
+            // the system bar floats over the map; the frame draws the two dark slabs behind its icons
             w.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
             w.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-            if (style == 0) {
-                if (Build.VERSION.SDK_INT >= 21) w.setStatusBarColor(Color.BLACK);
-            } else {
-                // the date and the three buttons float over the map, with a soft shade (style 1) or nothing (style 2)
-                if (Build.VERSION.SDK_INT >= 21) w.setStatusBarColor(Color.TRANSPARENT);
-                flags |= View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
-            }
+            if (Build.VERSION.SDK_INT >= 21) w.setStatusBarColor(Color.TRANSPARENT);
+            flags |= View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
         } else {
             w.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
             flags |= View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_FULLSCREEN;
@@ -947,12 +964,17 @@ public class MainActivity extends Activity {
             int dock = pip ? Math.round(H * dockH()) : 0, bar = Math.round(H * barH());
             int pw = Math.round(W * pipW()), ph = Math.round(H * pipH());
             int clockW = pip ? pw : Math.round(W * 0.2f);
-            measureExact(0, avoid ? W - pw : W, H - dock - bar);   // map / widget
+            measureExact(0, avoid ? W - pw : W, H);                // map / widget, also under the bars
             measureExact(1, pip ? pw : 0, pip ? ph - dock : 0);    // slot behind the 360 window
-            measureExact(2, pip ? W - pw : W, bar);                // 360 + contacts bar
+            measureExact(2, pip ? W - pw : W, bar);                // contacts bar
             measureExact(3, clockW, dock);                         // clock
             measureExact(4, W - clockW, dock);                     // dock icons
-            measureExact(5, avoid ? pw : 0, avoid ? H - ph : 0);   // navigation info above the 360 window
+            measureExact(5, avoid ? pw : 0, avoid ? H - ph : 0);   // plain panel above the 360 window
+        }
+
+        private void placeX(int i, int x0, int y0, int x1, int y1, int W) {
+            if (mirror()) place(i, W - x1, y0, W - x0, y1);
+            else place(i, x0, y0, x1, y1);
         }
 
         @Override
@@ -960,15 +982,16 @@ public class MainActivity extends Activity {
             int W = r - l, H = b - t;
             boolean pip = pipOn(), avoid = avoidPip();
             int dock = pip ? Math.round(H * dockH()) : 0, bar = Math.round(H * barH());
+            int ext = extOn() ? Math.round(H * shieldH() / 100f) : 0;
             int pw = Math.round(W * pipW()), ph = Math.round(H * pipH());
             int clockW = pip ? pw : Math.round(W * 0.2f);
-            place(0, avoid ? pw : 0, 0, W, H - dock - bar);
-            if (pip) place(1, 0, H - ph, pw, H - dock);
+            placeX(0, avoid ? pw : 0, 0, W, H, W);
+            if (pip) placeX(1, 0, H - ph, pw, H - dock, W);
             else place(1, 0, 0, 0, 0);
-            place(2, pip ? pw : 0, H - dock - bar, W, H - dock);
-            place(3, 0, H - dock, clockW, H);
-            place(4, clockW, H - dock, W, H);
-            if (avoid) place(5, 0, 0, pw, H - ph);
+            placeX(2, pip ? pw : 0, H - dock - ext - bar, W, H - dock - ext, W);
+            placeX(3, 0, H - dock, clockW, H, W);
+            placeX(4, clockW, H - dock, W, H, W);
+            if (avoid) placeX(5, 0, 0, pw, H - ph, W);
             else place(5, 0, 0, 0, 0);
         }
     }
@@ -1003,32 +1026,25 @@ public class MainActivity extends Activity {
         protected void onDraw(Canvas c) {
             float w = getWidth(), h = getHeight();
             float cy = h / 2f;
+            RectF box = new RectF(w * 0.07f, h * 0.12f, w * 0.93f, h * 0.88f);
+            drawGlass(c, box, kind == 0 ? iconColor("camera", BLUE) : (primary ? iconColor("contactPrimary", RED) : iconColor("contact", BLUE)), box.height() / 2f);
             p.setTypeface(Typeface.DEFAULT_BOLD);
             p.setStyle(Paint.Style.FILL);
             if (kind == 0) {
                 p.setTextAlign(Paint.Align.CENTER);
-                p.setColor(cText);
-                p.setTextSize(Math.min(h * 0.42f, w * 0.32f));
+                p.setColor(WHITE);
+                p.setTextSize(Math.min(h * 0.40f, w * 0.30f));
                 c.drawText(label, w / 2f, cy - (p.descent() + p.ascent()) / 2f, p);
                 return;
             }
-            int col = primary ? cAccent : cSub;
-            float size = Math.min(h * 0.52f, w * 0.30f);
+            float size = Math.min(h * 0.46f, w * 0.26f);
             p.setTextAlign(Paint.Align.LEFT);
-            p.setColor(col);
+            p.setColor(WHITE);
             p.setTextSize(size * 1.05f);
             float tw = p.measureText(label);
             float gap = size * 0.22f;
             float x0 = (w - (size + gap + tw)) / 2f;
-            ic.setColor(col);
-            if (primary && iconGlow > 0) {
-                float gr = Math.max(w, h) * 0.45f;
-                int ga = (int) (iconGlow / 100f * 0.5f * 255f);
-                Paint gp = new Paint(Paint.ANTI_ALIAS_FLAG);
-                gp.setShader(new RadialGradient(w / 2f, cy, gr, (ga << 24) | (cAccent & 0x00FFFFFF),
-                        0x00000000, Shader.TileMode.CLAMP));
-                c.drawCircle(w / 2f, cy, gr, gp);
-            }
+            ic.setColor(WHITE);
             c.save();
             c.translate(x0, cy - size / 2f);
             c.scale(size / 100f, size / 100f);
@@ -1036,10 +1052,51 @@ public class MainActivity extends Activity {
             else IconPack.draw(c, "phone", ic);
             c.restore();
             c.drawText(label, x0 + size + gap, cy - (p.descent() + p.ascent()) / 2f, p);
-            if (primary) {
-                p.setColor(cAccent);
-                c.drawRect(w * 0.2f, h - Math.max(3f, h * 0.05f), w * 0.8f, h, p);
-            }
+        }
+    }
+
+    static final int BLUE = 0xFF2D7BFF, RED = 0xFFFF3B4A;
+    private final Paint glassPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    /** Liquid glass behind one icon: coloured glow, tinted dark body, light rim and a soft highlight. */
+    private void drawGlass(Canvas c, RectF r, int color, float radius) {
+        Paint p = glassPaint;
+        int col = color & 0x00FFFFFF;
+        float amt = iconGlow / 100f;
+        if (amt > 0f) {
+            float gr = Math.max(r.width(), r.height()) * 0.62f;
+            p.setShader(new RadialGradient(r.centerX(), r.centerY(), gr,
+                    ((int) (Math.min(1f, amt) * 0.7f * 255f) << 24) | col, 0x00000000, Shader.TileMode.CLAMP));
+            p.setStyle(Paint.Style.FILL);
+            c.drawCircle(r.centerX(), r.centerY(), gr, p);
+        }
+        p.setShader(new LinearGradient(0, r.top, 0, r.bottom, new int[]{0x88000000 | col, 0xDD0C1218}, null, Shader.TileMode.CLAMP));
+        c.drawRoundRect(r, radius, radius, p);
+        p.setShader(null);
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(Math.max(1.5f, dp(1)));
+        p.setColor(0x66FFFFFF);
+        c.drawRoundRect(r, radius, radius, p);
+        p.setStyle(Paint.Style.FILL);
+        p.setColor(0x16FFFFFF);
+        RectF hi = new RectF(r.left + r.width() * 0.08f, r.top + r.height() * 0.07f, r.right - r.width() * 0.08f, r.centerY());
+        c.drawRoundRect(hi, radius * 0.8f, radius * 0.8f, p);
+    }
+
+    /** The glass disc behind a bar icon. */
+    private class GlassDisc extends View {
+        private final int color;
+
+        GlassDisc(Context c, int color) {
+            super(c);
+            this.color = color;
+        }
+
+        @Override
+        protected void onDraw(Canvas c) {
+            float w = getWidth(), h = getHeight(), d = Math.min(w, h) * 0.82f;
+            RectF r = new RectF((w - d) / 2f, (h - d) / 2f, (w + d) / 2f, (h + d) / 2f);
+            drawGlass(c, r, color, d / 2f);
         }
     }
 
@@ -1053,7 +1110,8 @@ public class MainActivity extends Activity {
         RadialGradient g = new RadialGradient(0f, 0f, 1f, new int[]{clear, clear, edge},
                 new float[]{0f, 0.42f, 1f}, Shader.TileMode.CLAMP);
         Matrix m = new Matrix();
-        m.setScale(w * 0.58f, h * 0.58f);
+        float extra = Math.max(0, Math.min(200, strength) - 100) / 100f;   // above 100 the dark edge reaches further in
+        m.setScale(w * (0.58f - 0.16f * extra), h * (0.58f - 0.16f * extra));
         m.postTranslate(w / 2f, h / 2f);
         g.setLocalMatrix(m);
         p.setStyle(Paint.Style.FILL);
@@ -1143,7 +1201,9 @@ public class MainActivity extends Activity {
         // navigation + city text (no box behind it)
         infoPanel = new LinearLayout(this);
         infoPanel.setOrientation(LinearLayout.VERTICAL);
-        infoPanel.setPadding(dp(18), dp(14), dp(12), dp(10));
+        int clearBottom = Math.round(dm.heightPixels * (barH() + (pipOn() ? dockH() : 0f)
+                + (extOn() ? shieldH() / 100f : 0f))) + dp(14);
+        infoPanel.setPadding(dp(12), dp(14), dp(18), clearBottom);
         navBox = infoBox();
         navArrow = new ImageView(this);
         navBox.addView(navArrow, new LinearLayout.LayoutParams(dp(120), dp(120)));
@@ -1164,11 +1224,7 @@ public class MainActivity extends Activity {
         hintText.setText("Tap here to enable navigation info");
         hintText.setGravity(Gravity.CENTER);
         hintText.setPadding(dp(12), dp(12), dp(12), dp(12));
-        GradientDrawable hb = new GradientDrawable();
-        hb.setColor(0xCC10161C);
-        hb.setStroke(Math.max(1, dp(1)), cAccent);
-        hb.setCornerRadius(dp(14));
-        hintText.setBackground(hb);
+        hintText.setBackground(glass(RED, false));
         hintText.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -1179,25 +1235,24 @@ public class MainActivity extends Activity {
         updateBoxes();
         leftPanel = new FrameLayout(this);
         leftPanel.addView(new Backdrop(this), new FrameLayout.LayoutParams(-1, -1));
-        if (avoidPip()) {
-            leftPanel.addView(infoPanel, new FrameLayout.LayoutParams(-1, -1));
-        } else {
-            top.addView(infoPanel, new FrameLayout.LayoutParams(dp(340), -1));
+        // navigation and city info on the side away from the 360 window
+        top.addView(infoPanel, new FrameLayout.LayoutParams(dp(360), -1, mirror() ? Gravity.START : Gravity.END));
+        String logoPath = cfg.getString("logoFile", "");
+        if (logoPath.length() > 0 && new File(logoPath).exists()) {
+            Bitmap lb = BitmapFactory.decodeFile(logoPath);
+            if (lb != null) {
+                ImageView logo = new ImageView(this);
+                logo.setImageBitmap(lb);
+                logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                logo.setAlpha(0.9f);
+                int ls = dp(Math.max(24, Math.min(160, cfg.getInt("logoSize", 56))));
+                FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(ls, ls, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+                llp.topMargin = dp(12);
+                top.addView(logo, llp);
+            }
         }
         infoPanel.setVisibility(cfg.getBoolean("showInfo", true) ? View.VISIBLE : View.GONE);
 
-        // button that opens the navigation app (Google Maps by default)
-        navBtn = flat("Navigate");
-        navBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                openNav();
-            }
-        });
-        FrameLayout.LayoutParams nlp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
-        nlp.topMargin = dp(12);
-        nlp.rightMargin = dp(12);
-        top.addView(navBtn, nlp);
         body.addView(top);                       // child 0
 
         // ---------- slot behind the 360 window: date, heading, altitude
@@ -1225,9 +1280,10 @@ public class MainActivity extends Activity {
         slot.setVisibility(pipOn() ? View.VISIBLE : View.GONE);
         body.addView(slot);                      // child 1
 
-        // ---------- the 15% bar: 360 and three contacts
+        // ---------- contacts bar (one rounded bar, glass icons)
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
+        if (mirror()) bar.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         FrameLayout cam = cell();
         Badge camBadge = new Badge(this, 0);
         camBadge.setLabel("360°");
@@ -1239,64 +1295,64 @@ public class MainActivity extends Activity {
             }
         });
         cam.setOnLongClickListener(settingsLongClick());
-        if (!pipOn()) {
-            // Minimal layout: no 360 window and no black dock, so the radio and the map/YouTube
-            // switch move into this bar (hold the radio button for all apps).
-            FrameLayout radioCell = cell();
-            Glyph rg = new Glyph(this, Glyph.RADIO);
-            rg.setFrac(0.55f);
-            rg.setColor(iconColor("radio", cGlyph));
-            rg.setGlow(iconGlow > 0 ? iconColor("radio", cAccent) : 0, iconGlow / 100f);
-            radioCell.addView(rg, new FrameLayout.LayoutParams(-1, -1));
-            radioCell.setOnClickListener(new View.OnClickListener() {
+        int prim = cfg.getInt("primary", 0);
+        if (pipOn()) {
+            bar.addView(cam, barLp());
+            for (int i = 0; i < 3; i++) bar.addView(contactCell(i), barLp());
+        } else if (extOn()) {
+            // the frame's own bar holds 360 and the primary contact, so this bar gets the other things
+            bar.addView(barIcon(Glyph.RADIO, "radio", new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     launchPref("pkgRadio");
                 }
-            });
-            radioCell.setOnLongClickListener(new View.OnLongClickListener() {
+            }, null), barLp());
+            FrameLayout th = barIcon(Glyph.THEME, "theme", new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    toggleTheme();
+                }
+            }, null);
+            themeGlyph = (Glyph) th.getChildAt(1);
+            themeGlyph.setState(cfg.getInt("theme", 2) == 2 ? 1 : 0);
+            bar.addView(th, barLp());
+            bar.addView(barIcon(Glyph.DRAWER, "apps", new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    showDrawer();
+                }
+            }, null), barLp());
+            for (int i = 0; i < 3; i++) {
+                if (i != prim) bar.addView(contactCell(i), barLp());
+            }
+        } else {
+            // simple layout: radio, 360, map/media switch, three contacts
+            bar.addView(barIcon(Glyph.RADIO, "radio", new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    launchPref("pkgRadio");
+                }
+            }, new View.OnLongClickListener() {
                 @Override
                 public boolean onLongClick(View v) {
                     showDrawer();
                     return true;
                 }
-            });
-            bar.addView(radioCell, barLp());
-            FrameLayout swCell = cell();
-            Glyph sg2 = new Glyph(this, Glyph.YT);
-            sg2.setFrac(0.55f);
-            sg2.setColor(iconColor("youtube", cGlyph));
-            sg2.setGlow(iconGlow > 0 ? iconColor("youtube", cAccent) : 0, iconGlow / 100f);
-            swCell.addView(sg2, new FrameLayout.LayoutParams(-1, -1));
-            swCell.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    toggleYt();
-                }
-            });
-            swCell.setOnLongClickListener(new View.OnLongClickListener() {
-                @Override
-                public boolean onLongClick(View v) {
-                    if (ytPane != null && ytPane.getVisibility() == View.VISIBLE) openYoutube();
-                    else openNav();
-                    return true;
-                }
-            });
-            bar.addView(swCell, barLp());
-        }
-        bar.addView(cam, barLp());
-        for (int i = 0; i < 3; i++) {
-            bar.addView(contactCell(i), barLp());
+            }), barLp());
+            bar.addView(cam, barLp());
+            bar.addView(switchCell(true), barLp());
+            for (int i = 0; i < 3; i++) bar.addView(contactCell(i), barLp());
         }
         FrameLayout barWrap = new FrameLayout(this);
-        barWrap.addView(new Backdrop(this), new FrameLayout.LayoutParams(-1, -1));
         GradientDrawable pill = new GradientDrawable();
-        pill.setColor(cTileFill);
+        pill.setColor((cTileFill & 0x00FFFFFF) | 0xB8000000);
         pill.setStroke(Math.max(1, rdp(1)), cTileStroke);
-        pill.setCornerRadius(rdp(30));
+        pill.setCornerRadius(rdp(tileRadius));
         bar.setBackground(pill);
+        // keep the bar inside the frame's margin and rounded corners
+        int fm = cfg.getBoolean("frame", true) ? rdp(cfg.getInt("margin", 8)) : 0;
         FrameLayout.LayoutParams pillLp = new FrameLayout.LayoutParams(-1, -1);
-        pillLp.setMargins(rdp(8), rdp(6), rdp(8), rdp(6));
+        pillLp.setMargins(fm + rdp(8), rdp(6), fm + rdp(8), rdp(6) + (pipOn() || extOn() ? 0 : fm));
         barWrap.addView(bar, pillLp);
         body.addView(barWrap);                   // child 2
 
@@ -1308,23 +1364,20 @@ public class MainActivity extends Activity {
         clock.setTextSize(TypedValue.COMPLEX_UNIT_PX, dm.heightPixels * dockH() * 0.45f);
         clock.setTypeface(Typeface.DEFAULT_BOLD);
         clock.setGravity(Gravity.CENTER);
+        clock.setBackgroundColor(Color.BLACK);
         clock.setVisibility(pipOn() ? View.VISIBLE : View.GONE);
         body.addView(clock);                     // child 3
 
         LinearLayout dockIcons = new LinearLayout(this);
         dockIcons.setOrientation(LinearLayout.HORIZONTAL);
-        GradientDrawable dockBg = new GradientDrawable();
-        dockBg.setColor(0xE60B0F14);
-        dockBg.setCornerRadius(rdp(28));
-        dockBg.setStroke(Math.max(1, rdp(1)), cTileStroke);
-        dockIcons.setBackground(dockBg);
-        dockIcons.setPadding(rdp(10), rdp(2), rdp(10), rdp(2));
+        dockIcons.setBackgroundColor(Color.BLACK);   // plain black bar, square corners
         String sel = "," + cfg.getString("dockItems", DOCK_DEFAULT) + ",";
         for (int k = 0; k < DOCK_IDS.length; k++) {
             if (sel.contains("," + DOCK_IDS[k] + ",")) {
                 dockIcons.addView(dockItem(DOCK_IDS[k]), new LinearLayout.LayoutParams(0, -1, 1f));
             }
         }
+        if (mirror()) dockIcons.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         dockIcons.setVisibility(pipOn() ? View.VISIBLE : View.GONE);
         body.addView(dockIcons);                 // child 4
         body.addView(leftPanel);                 // child 5
@@ -1332,12 +1385,6 @@ public class MainActivity extends Activity {
         // chrome lines + (if the frame service is not running) the margin and rounded corners
         overlay = new Overlay(this);
         rootFrame.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
-        statusScrim = new View(this);
-        statusScrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{0xB3000000, 0x00000000}));
-        boolean scrim = cfg.getBoolean("showStatus", false) && cfg.getInt("statusStyle", 1) == 1;
-        statusScrim.setVisibility(scrim ? View.VISIBLE : View.GONE);
-        rootFrame.addView(statusScrim, new FrameLayout.LayoutParams(-1, dp(64), Gravity.TOP));
         cover = new View(this);          // black until the map has had time to draw (no white tiles)
         cover.setBackgroundColor(Color.BLACK);
         rootFrame.addView(cover, new FrameLayout.LayoutParams(-1, -1));
@@ -1361,6 +1408,27 @@ public class MainActivity extends Activity {
                 }).start();
             }
         }, delay);
+    }
+
+    /** Liquid-glass look: a dark translucent body tinted with the colour, a soft coloured glow and a light rim. */
+    private Drawable glass(int glow, boolean oval) {
+        int g = glow & 0x00FFFFFF;
+        GradientDrawable halo = new GradientDrawable();
+        GradientDrawable body = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0x70000000 | g, 0xCC0C1218});
+        halo.setColor(0x38000000 | g);
+        if (oval) {
+            halo.setShape(GradientDrawable.OVAL);
+            body.setShape(GradientDrawable.OVAL);
+        } else {
+            halo.setCornerRadius(dp(22));
+            body.setCornerRadius(dp(18));
+        }
+        body.setStroke(Math.max(1, dp(1)), 0x66FFFFFF);
+        LayerDrawable ld = new LayerDrawable(new Drawable[]{halo, body});
+        int in = dp(3);
+        ld.setLayerInset(1, in, in, in, in);
+        return ld;
     }
 
     private FrameLayout cell() {
@@ -1388,20 +1456,7 @@ public class MainActivity extends Activity {
                 }
             }, null);
         } else if (id.equals("mapyt")) {
-            return dockCell(Glyph.YT, "youtube", new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    toggleYt();
-                }
-            }, new View.OnLongClickListener() {
-                @Override
-                public boolean onLongClick(View v) {
-                    // hold: open YouTube while the widget shows it, otherwise the navigation app
-                    if (ytPane != null && ytPane.getVisibility() == View.VISIBLE) openYoutube();
-                    else openNav();
-                    return true;
-                }
-            });
+            return switchCell(false);
         } else if (id.equals("nav")) {
             return dockCell(Glyph.NAVI, "navigation", new View.OnClickListener() {
                 @Override
@@ -1444,7 +1499,7 @@ public class MainActivity extends Activity {
                 }
             }, null);
             themeGlyph = (Glyph) themeCell.getChildAt(0);
-            themeGlyph.setState(cfg.getInt("theme", 0) == 2 ? 1 : 0);
+            themeGlyph.setState(cfg.getInt("theme", 2) == 2 ? 1 : 0);
             return themeCell;
         } else if (id.equals("apps")) {
             return dockCell(Glyph.DRAWER, "apps", new View.OnClickListener() {
@@ -1469,10 +1524,50 @@ public class MainActivity extends Activity {
         g.setFrac(0.62f);
         int ic = iconColor(id, 0xFFF2F5F8); // the bottom bar is black in every theme
         g.setColor(ic);
-        g.setGlow(iconGlow > 0 ? iconColor(id, cAccent) : 0, iconGlow / 100f);
         f.addView(g, new FrameLayout.LayoutParams(-1, -1));
         f.setOnClickListener(click);
         if (lc != null) f.setOnLongClickListener(lc);
+        return f;
+    }
+
+    /** A bar icon on a glass disc (glyph is child 1 so callers can reach it). */
+    private FrameLayout barIcon(int glyphType, String id, View.OnClickListener click, View.OnLongClickListener lc) {
+        FrameLayout f = cell();
+        f.addView(new GlassDisc(this, iconColor(id, BLUE)), new FrameLayout.LayoutParams(-1, -1));
+        Glyph g = new Glyph(this, glyphType);
+        g.setFrac(0.46f);
+        g.setColor(0xFFF2F5F8);
+        f.addView(g, new FrameLayout.LayoutParams(-1, -1));
+        f.setOnClickListener(click);
+        if (lc != null) f.setOnLongClickListener(lc);
+        return f;
+    }
+
+    /** Map / media switch: tap opens Google Maps or the browser (whichever the widget shows), hold changes the widget. */
+    private FrameLayout switchCell(boolean glassy) {
+        View.OnClickListener click = new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                switchClick();
+            }
+        };
+        View.OnLongClickListener hold = new View.OnLongClickListener() {
+            @Override
+            public boolean onLongClick(View v) {
+                toggleYt();
+                return true;
+            }
+        };
+        FrameLayout f;
+        Glyph g;
+        if (glassy) {
+            f = barIcon(Glyph.MAP, "switch", click, hold);
+            g = (Glyph) f.getChildAt(1);
+        } else {
+            f = dockCell(Glyph.MAP, "switch", click, hold);
+            g = (Glyph) f.getChildAt(0);
+        }
+        switchGlyphs.add(g);
         return f;
     }
 
@@ -1538,11 +1633,8 @@ public class MainActivity extends Activity {
     private LinearLayout infoBox() {
         LinearLayout b = new LinearLayout(this);
         b.setOrientation(LinearLayout.VERTICAL);
-        b.setPadding(dp(14), dp(10), dp(14), dp(10));
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(0xCC10161C);
-        g.setCornerRadius(dp(14));
-        b.setBackground(g);
+        b.setPadding(dp(16), dp(12), dp(16), dp(12));
+        b.setBackground(glass(BLUE, false));
         return b;
     }
 
@@ -1699,13 +1791,9 @@ public class MainActivity extends Activity {
             int strong = (alpha << 24) | (color & 0x00FFFFFF);
             int mid = ((alpha / 3) << 24) | (color & 0x00FFFFFF);
             int none = color & 0x00FFFFFF;
-            float th = h * 0.34f, sw = w * 0.14f;
+            float th = h / 3f;   // the top third only
             p.setShader(new LinearGradient(0, 0, 0, th, new int[]{strong, mid, none}, new float[]{0f, 0.4f, 1f}, Shader.TileMode.CLAMP));
             c.drawRect(0, 0, w, th, p);
-            p.setShader(new LinearGradient(0, 0, sw, 0, new int[]{strong, none}, null, Shader.TileMode.CLAMP));
-            c.drawRect(0, 0, sw, h, p);
-            p.setShader(new LinearGradient(w, 0, w - sw, 0, new int[]{strong, none}, null, Shader.TileMode.CLAMP));
-            c.drawRect(w - sw, 0, w, h, p);
             p.setShader(null);
         }
     }
@@ -1719,11 +1807,11 @@ public class MainActivity extends Activity {
             col = 0xFFFFBE1E;
             a = 0xC8;
         } else {
-            col = cAccent;
-            a = 0x70;
+            col = 0;
+            a = 0;
         }
         lightGlow.set(col, a);
-        lightLine.setBackgroundColor((0xFF << 24) | (col & 0x00FFFFFF));
+        lightLine.setBackgroundColor(a == 0 ? 0 : ((0xFF << 24) | (col & 0x00FFFFFF)));
     }
 
     // ------------------------------------------------------------------ navigation app + map style
@@ -1753,7 +1841,7 @@ public class MainActivity extends Activity {
     /** Loads the offline map after the first frame (it is the slowest part of start-up). */
     private void loadMap() {
         if (isFinishing() || isDestroyed() || mapSlot == null) return;
-        float textScale = Math.max(100, Math.min(300, cfg.getInt("mapText", 150))) / 100f;
+        float textScale = Math.max(100, Math.min(300, cfg.getInt("mapText", 300))) / 100f;
         double zoom = Math.max(12, Math.min(19, cfg.getInt("mapZoom", 18)));
         String mf = cfg.getString("mapFile", "");
         File mfile = new File(mf);
@@ -1834,53 +1922,15 @@ public class MainActivity extends Activity {
         }
     }
 
-    // ------------------------------------------------------------------ YouTube widget
+    // ------------------------------------------------------------------ media widget (what is playing, from the notification)
 
     private Glyph ytPauseGlyph;
-    private char ytEmbedState = 'n';
-    private static final java.util.regex.Pattern VIDEO_ID =
-            java.util.regex.Pattern.compile("(?:[?&]v=|/shorts/|/embed/|youtu\\.be/)([A-Za-z0-9_-]{6,})");
+    private final ArrayList<Glyph> switchGlyphs = new ArrayList<Glyph>();
 
     private void buildYtPane(FrameLayout top) {
         ytPane = new FrameLayout(this);
         ytPane.setBackgroundColor(Color.BLACK);
         ytPane.setVisibility(View.GONE);
-        if (cfg.getInt("ytSource", 0) == 1) {
-            ytWeb = new WebView(this);
-            WebSettings s = ytWeb.getSettings();
-            s.setJavaScriptEnabled(true);
-            s.setDomStorageEnabled(true);
-            s.setMediaPlaybackRequiresUserGesture(false);
-            s.setUserAgentString(MapHost.CHROME_UA);
-            CookieManager.getInstance().setAcceptCookie(true);
-            if (Build.VERSION.SDK_INT >= 21) CookieManager.getInstance().setAcceptThirdPartyCookies(ytWeb, true);
-            ytWeb.setWebChromeClient(new android.webkit.WebChromeClient());
-            ytWeb.setWebViewClient(new WebViewClient() {
-                @Override
-                public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                    return handleYtUrl(url);
-                }
-
-                @Override
-                public boolean shouldOverrideUrlLoading(WebView view, android.webkit.WebResourceRequest request) {
-                    return handleYtUrl(request.getUrl().toString());
-                }
-
-                @Override
-                public void onPageFinished(WebView view, String url) {
-                    ytOnEmbed = url != null && url.contains("/embed/");
-                    updateYtUi();
-                }
-            });
-            ytWeb.setOnTouchListener(new View.OnTouchListener() {
-                @Override
-                public boolean onTouch(View v, MotionEvent e) {
-                    lastTouchAny = System.currentTimeMillis();
-                    return false;
-                }
-            });
-            ytPane.addView(ytWeb, new FrameLayout.LayoutParams(-1, -1));
-        }
 
         ytShade = new FrameLayout(this);
         ytShade.setBackgroundColor(Color.BLACK);
@@ -1897,21 +1947,17 @@ public class MainActivity extends Activity {
         if (lastYtBmp != null) ytImage.setImageBitmap(lastYtBmp);
         ytShade.addView(ytTitle, new FrameLayout.LayoutParams(-1, dp(110), Gravity.BOTTOM));
         ytPane.addView(ytShade, new FrameLayout.LayoutParams(-1, -1));
+        if (vigStrength > 0) ytPane.addView(new VignetteView(this), new FrameLayout.LayoutParams(-1, -1));
 
-        // play / pause button on the thumbnail
+        // play / pause button
         ytPlayBtn = new FrameLayout(this);
-        GradientDrawable pb = new GradientDrawable();
-        pb.setShape(GradientDrawable.OVAL);
-        pb.setColor(0xB0000000);
-        pb.setStroke(dp(2), CHROME);
-        ytPlayBtn.setBackground(pb);
+        ytPlayBtn.setBackground(glass(0xFF2D7BFF, true));
         ytPlayGlyph = new Glyph(this, Glyph.PLAY);
         ytPlayGlyph.setColor(WHITE);
         ytPlayGlyph.setFrac(0.55f);
         ytPauseGlyph = new Glyph(this, Glyph.PAUSE);
         ytPauseGlyph.setColor(WHITE);
         ytPauseGlyph.setFrac(0.55f);
-        if (vigStrength > 0) ytPane.addView(new VignetteView(this), new FrameLayout.LayoutParams(-1, -1));
         ytPlayBtn.addView(ytPlayGlyph, new FrameLayout.LayoutParams(-1, -1));
         ytPlayBtn.addView(ytPauseGlyph, new FrameLayout.LayoutParams(-1, -1));
         ytPlayBtn.setOnClickListener(new View.OnClickListener() {
@@ -1920,80 +1966,16 @@ public class MainActivity extends Activity {
                 ytPlayPause();
             }
         });
-        ytPlayBtn.setOnLongClickListener(new View.OnLongClickListener() {
-            @Override
-            public boolean onLongClick(View v) {
-                openYoutube();   // hold = YouTube in Brave (background play)
-                return true;
-            }
-        });
-        FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(dp(84), dp(84), Gravity.BOTTOM | Gravity.END);
-        plp.bottomMargin = dp(26);
-        plp.rightMargin = dp(26);
+        FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(dp(92), dp(92), Gravity.BOTTOM | Gravity.END);
+        plp.bottomMargin = dp(40);
+        plp.rightMargin = dp(40);
         ytPane.addView(ytPlayBtn, plp);
-
-        FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
-        blp.topMargin = dp(12);
-        blp.rightMargin = dp(12);
-        ytOpenBtn = flat("Open YouTube");
-        ytOpenBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                openYoutube();
-            }
-        });
-        // (the Open YouTube button is gone: hold the map / video button instead)
-        ytBrowseBtn = flat("Browse");
-        ytBrowseBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                ytBrowse = !ytBrowse;
-                updateYtUi();
-            }
-        });
-        FrameLayout.LayoutParams brlp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
-        brlp.topMargin = dp(12);
-        brlp.rightMargin = dp(12);
-        ytPane.addView(ytBrowseBtn, brlp);
-        ytBackBtn = flat("Back to list");
-        ytBackBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (ytWeb != null && ytWeb.canGoBack()) ytWeb.goBack();
-                ytBrowse = true;
-                updateYtUi();
-            }
-        });
-        FrameLayout.LayoutParams balp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
-        balp.topMargin = dp(12);
-        balp.leftMargin = dp(12);
-        ytPane.addView(ytBackBtn, balp);
         top.addView(ytPane, new FrameLayout.LayoutParams(-1, -1));
         updateYtUi();
     }
 
-    /** Keeps the embedded page inside the launcher: no jumping into the YouTube app (that gave "unknown URL scheme"). */
-    private boolean handleYtUrl(String url) {
-        if (url == null) return false;
-        String u = url.toLowerCase(Locale.US);
-        if (u.startsWith("http:") || u.startsWith("https:") || u.startsWith("about:")
-                || u.startsWith("data:") || u.startsWith("blob:")) return false;
-        // intent://, vnd.youtube:, market: ... the page wanted to open an app. Play the video here instead.
-        java.util.regex.Matcher m = VIDEO_ID.matcher(url);
-        String id = "";
-        if (m.find()) id = m.group(1);
-        else {
-            java.util.regex.Matcher m2 = java.util.regex.Pattern.compile("[?&]v=([A-Za-z0-9_-]{6,})").matcher(url);
-            if (m2.find()) id = m2.group(1);
-        }
-        if (id.length() > 0 && ytWeb != null) {
-            ytWeb.loadUrl("https://www.youtube.com/embed/" + id + "?autoplay=1&playsinline=1&rel=0");
-        }
-        return true;
-    }
-
     private void openYoutube() {
-        Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(cfg.getString("ytUrl", "https://m.youtube.com")));
+        Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://m.youtube.com"));
         String bp = cfg.getString("pkgBrowser", "");
         if (bp.length() == 0) {
             try {
@@ -2007,56 +1989,35 @@ public class MainActivity extends Activity {
         try {
             startActivity(i);
         } catch (Exception e) {
-            Toast.makeText(this, "No browser found. Install Brave (for background play) or choose one in settings.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "No browser found. Install Brave (see the Guide tab) or choose one in settings.", Toast.LENGTH_LONG).show();
         }
     }
 
+    private boolean mediaShown() {
+        return ytPane != null && ytPane.getVisibility() == View.VISIBLE;
+    }
+
+    /** Click on the switch button: open the app that belongs to what the widget shows. */
+    private void switchClick() {
+        if (mediaShown()) openYoutube();
+        else openNav();
+    }
+
+    /** Hold on the switch button: change the widget between the map and what is playing. */
     private void toggleYt() {
-        boolean show = ytPane.getVisibility() != View.VISIBLE;
+        boolean show = !mediaShown();
         ytPane.setVisibility(show ? View.VISIBLE : View.GONE);
-        if (!avoidPip()) {
-            infoPanel.setVisibility(show ? View.GONE
-                    : (cfg.getBoolean("showInfo", true) ? View.VISIBLE : View.GONE));
-        }
-        navBtn.setVisibility(show ? View.GONE : View.VISIBLE);
-        if (show && ytWeb != null && !ytWebLoaded) {
-            ytWebLoaded = true;
-            ytWeb.loadUrl(cfg.getString("ytUrl", "https://m.youtube.com"));
-        }
+        infoPanel.setVisibility(show ? View.GONE : (cfg.getBoolean("showInfo", true) ? View.VISIBLE : View.GONE));
         updateYtUi();
         refreshYt();
     }
 
     private void updateYtUi() {
         if (ytShade == null) return;
-        boolean embed = ytWeb != null;
-        boolean thumbOnly = cfg.getBoolean("ytThumbOnly", true);
-        boolean shade, play, browse, open;
-        if (!embed) {
-            shade = true;
-            play = true;
-            browse = false;
-            open = true;
-        } else if (!thumbOnly) {
-            shade = false;
-            play = false;
-            browse = false;
-            open = false;
-        } else {
-            boolean has = ytEmbedState != 'n';
-            shade = has && !ytBrowse;
-            play = shade;
-            browse = has;
-            open = false;
-        }
-        ytShade.setVisibility(shade ? View.VISIBLE : View.GONE);
-        ytPlayBtn.setVisibility(play ? View.VISIBLE : View.GONE);
-        ytBrowseBtn.setVisibility(browse ? View.VISIBLE : View.GONE);
-        ytOpenBtn.setVisibility(View.GONE);
-        ytBackBtn.setVisibility(embed && ytOnEmbed ? View.VISIBLE : View.GONE);
-        ytBrowseBtn.setText(ytBrowse ? "Thumbnail only" : "Browse");
         ytPlayGlyph.setVisibility(ytPlayingNow ? View.GONE : View.VISIBLE);
         ytPauseGlyph.setVisibility(ytPlayingNow ? View.VISIBLE : View.GONE);
+        // the switch button shows a map pin while the map is the widget, and the video icon while media is
+        for (Glyph g : switchGlyphs) g.setType(mediaShown() ? Glyph.MAP : Glyph.YT);
     }
 
     private MediaController pickSession() {
@@ -2076,10 +2037,6 @@ public class MainActivity extends Activity {
 
     private void refreshYt() {
         if (ytPane == null) return;
-        if (ytWeb != null) {
-            refreshYtEmbed();
-            return;
-        }
         try {
             MediaController mc = pickSession();
             if (mc == null) {
@@ -2101,104 +2058,27 @@ public class MainActivity extends Activity {
             }
             if (lastYtBmp != null) ytImage.setImageBitmap(lastYtBmp);
             ytTitle.setText(lastYtTitle.length() > 0 ? lastYtTitle
-                    : "Nothing playing yet. Hold the play button to open YouTube in Brave.");
+                    : "Nothing playing yet. Tap the video button below to open YouTube.");
         } catch (SecurityException e) {
-            ytTitle.setText("Allow navigation info access first (tap the hint on the map)");
+            ytTitle.setText("Allow notification access first (see the Guide tab)");
         } catch (Exception e) {
             ytTitle.setText("Media info unavailable");
         }
         updateYtUi();
     }
 
-    private void refreshYtEmbed() {
-        if (!ytWebLoaded) {
-            videoPlaying = false;
-            return;
-        }
-        ytWeb.evaluateJavascript("(function(){var v=document.querySelector('video');if(!v)return 'n||';"
-                        + "return (v.paused?'p':'g')+'|'+location.href+'|'+document.title;})()",
-                new ValueCallback<String>() {
-                    @Override
-                    public void onReceiveValue(String raw) {
-                        handleEmbedState(raw);
-                    }
-                });
-    }
-
-    private void handleEmbedState(String raw) {
-        if (raw == null) return;
-        String s = raw;
-        if (s.length() >= 2 && s.startsWith("\"") && s.endsWith("\"")) s = s.substring(1, s.length() - 1);
-        s = s.replace("\\u003C", "<").replace("\\\"", "\"").replace("\\/", "/");
-        String[] parts = s.split("\\|", 3);
-        char st = parts.length > 0 && parts[0].length() > 0 ? parts[0].charAt(0) : 'n';
-        String href = parts.length > 1 ? parts[1] : "";
-        String title = parts.length > 2 ? parts[2] : "";
-        ytEmbedState = st;
-        ytPlayingNow = st == 'g';
-        videoPlaying = ytPlayingNow;
-        if (st == 'n') {
-            ytCurrentId = "";
-        } else {
-            java.util.regex.Matcher m = VIDEO_ID.matcher(href);
-            String id = m.find() ? m.group(1) : "";
-            if (id.length() > 0 && !id.equals(ytCurrentId)) {
-                ytCurrentId = id;
-                ytBrowse = false;
-                loadThumb(id);
-            }
-            if (title.length() > 0 && !title.equals("YouTube")) {
-                if (title.endsWith(" - YouTube")) title = title.substring(0, title.length() - 10);
-                lastYtTitle = title;
-                ytTitle.setText(title);
-            }
-        }
-        updateYtUi();
-    }
-
-    private void loadThumb(final String id) {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    HttpURLConnection c = (HttpURLConnection) new URL("https://i.ytimg.com/vi/" + id + "/hqdefault.jpg").openConnection();
-                    c.setConnectTimeout(8000);
-                    c.setReadTimeout(8000);
-                    final Bitmap bmp = BitmapFactory.decodeStream(c.getInputStream());
-                    if (bmp == null) return;
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            if (id.equals(ytCurrentId)) {
-                                lastYtBmp = bmp;
-                                ytImage.setImageBitmap(bmp);
-                            }
-                        }
-                    });
-                } catch (Exception ignored) {
-                    // offline: keep the previous picture
-                }
-            }
-        }).start();
-    }
-
     private void ytPlayPause() {
-        if (ytWeb != null) {
-            ytWeb.evaluateJavascript("(function(){var v=document.querySelector('video');"
-                    + "if(v){if(v.paused)v.play();else v.pause();}})()", null);
-        } else {
-            boolean done = false;
-            try {
-                MediaController mc = pickSession();
-                if (mc != null) {
-                    if (ytPlayingNow) mc.getTransportControls().pause();
-                    else mc.getTransportControls().play();
-                    done = true;
-                }
-            } catch (Exception ignored) {
+        boolean done = false;
+        try {
+            MediaController mc = pickSession();
+            if (mc != null) {
+                if (ytPlayingNow) mc.getTransportControls().pause();
+                else mc.getTransportControls().play();
+                done = true;
             }
-            if (!done) mediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE);
+        } catch (Exception ignored) {
         }
+        if (!done) mediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE);
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {
@@ -2274,77 +2154,85 @@ public class MainActivity extends Activity {
         cfg.edit().putString(key, sb.toString()).apply();
     }
 
-    /** Like NetGuard: one row per app with F (frame), S (shield bar), B (floating buttons) and All. */
-    private Button exclusionsButton() {
-        final Button b = flat("Excluded apps (frame / shield bar / floating buttons)");
+    private String pickedButtons(CheckBox[] cb) {
+        StringBuilder sb = new StringBuilder();
+        for (int k = 0; k < cb.length; k++) {
+            if (cb[k].isChecked()) {
+                if (sb.length() > 0) sb.append(',');
+                sb.append(FloatingService.BTN_IDS[k]);
+            }
+        }
+        return sb.toString();
+    }
+
+    /** A button that opens a tick-list of apps and stores the chosen packages (comma separated) under key. */
+    private Button appsButton(final String title, final String key) {
+        final Button b = flat("");
+        final Runnable refresh = new Runnable() {
+            @Override
+            public void run() {
+                String v = cfg.getString(key, "");
+                int n = v.length() == 0 ? 0 : v.split(",").length;
+                b.setText(title + (n == 0 ? " (default: the 360 app)" : " (" + n + " chosen)"));
+            }
+        };
+        refresh.run();
         b.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 final List<ResolveInfo> apps = launchableApps();
                 final PackageManager pm = getPackageManager();
-                final String[] keys = {"frameEx", "shieldEx", "floatEx"};
-                String[] heads = {"F", "S", "B", "All"};
-                LinearLayout col = new LinearLayout(MainActivity.this);
-                col.setOrientation(LinearLayout.VERTICAL);
-                LinearLayout hd = new LinearLayout(MainActivity.this);
-                hd.setPadding(rdp(12), rdp(6), rdp(12), rdp(6));
-                TextView hl = new TextView(MainActivity.this);
-                hl.setText("Tick = hide there");
-                hl.setTextColor(WHITE);
-                hd.addView(hl, new LinearLayout.LayoutParams(0, -2, 1f));
-                for (String h : heads) {
-                    TextView t = new TextView(MainActivity.this);
-                    t.setText(h);
-                    t.setTextColor(CHROME);
-                    t.setGravity(Gravity.CENTER);
-                    hd.addView(t, new LinearLayout.LayoutParams(rdp(64), -2));
+                String cur = "," + cfg.getString(key, cfg.getString("pkg360", "")) + ",";
+                CharSequence[] names = new CharSequence[apps.size()];
+                final boolean[] on = new boolean[apps.size()];
+                for (int i = 0; i < names.length; i++) {
+                    names[i] = apps.get(i).loadLabel(pm);
+                    on[i] = cur.contains("," + apps.get(i).activityInfo.packageName + ",");
                 }
-                col.addView(hd);
-                for (final ResolveInfo ri : apps) {
-                    final String pkg = ri.activityInfo.packageName;
-                    LinearLayout row = new LinearLayout(MainActivity.this);
-                    row.setGravity(Gravity.CENTER_VERTICAL);
-                    row.setPadding(rdp(12), rdp(2), rdp(12), rdp(2));
-                    ImageView iv = new ImageView(MainActivity.this);
-                    iv.setImageDrawable(ri.loadIcon(pm));
-                    row.addView(iv, new LinearLayout.LayoutParams(rdp(34), rdp(34)));
-                    TextView tv = new TextView(MainActivity.this);
-                    tv.setText(ri.loadLabel(pm));
-                    tv.setTextColor(WHITE);
-                    tv.setTextSize(16);
-                    tv.setPadding(rdp(10), 0, 0, 0);
-                    row.addView(tv, new LinearLayout.LayoutParams(0, -2, 1f));
-                    final CheckBox[] cb = new CheckBox[4];
-                    for (int k = 0; k < 4; k++) {
-                        cb[k] = new CheckBox(MainActivity.this);
-                        if (k < 3) cb[k].setChecked(inList(keys[k], pkg));
-                        row.addView(cb[k], new LinearLayout.LayoutParams(rdp(64), -2));
-                        final int kk = k;
-                        cb[k].setOnCheckedChangeListener(new android.widget.CompoundButton.OnCheckedChangeListener() {
+                new android.app.AlertDialog.Builder(MainActivity.this, android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK)
+                        .setTitle(title)
+                        .setMultiChoiceItems(names, on, new DialogInterface.OnMultiChoiceClickListener() {
                             @Override
-                            public void onCheckedChanged(android.widget.CompoundButton c, boolean on) {
-                                if (kk < 3) {
-                                    setInList(keys[kk], pkg, on);
-                                } else if (c.isPressed()) {
-                                    for (int j = 0; j < 3; j++) {
-                                        cb[j].setChecked(on);
+                            public void onClick(DialogInterface d, int which, boolean checked) {
+                                on[which] = checked;
+                            }
+                        })
+                        .setPositiveButton("Done", new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface d, int w) {
+                                StringBuilder sb = new StringBuilder();
+                                for (int i = 0; i < on.length; i++) {
+                                    if (on[i]) {
+                                        if (sb.length() > 0) sb.append(',');
+                                        sb.append(apps.get(i).activityInfo.packageName);
                                     }
                                 }
+                                cfg.edit().putString(key, sb.toString()).apply();
+                                refresh.run();
                             }
-                        });
-                    }
-                    col.addView(row);
-                }
-                ScrollView sv = new ScrollView(MainActivity.this);
-                sv.addView(col);
-                new android.app.AlertDialog.Builder(MainActivity.this, android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK)
-                        .setTitle("Excluded apps")
-                        .setView(sv)
-                        .setPositiveButton("Done", null)
+                        })
+                        .setNegativeButton("Cancel", null)
                         .show();
             }
         });
         return b;
+    }
+
+    private void linkButton(LinearLayout l, String text, final String url) {
+        Button b = flat(text);
+        b.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                try {
+                    Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "No browser found", Toast.LENGTH_LONG).show();
+                }
+            }
+        });
+        addFull(l, b);
     }
 
     private void chooseApp(String title, final Pick cb) {
@@ -2413,6 +2301,7 @@ public class MainActivity extends Activity {
         String[] defName = {"Dad", "Amma", "Sis"};
         for (int i = 0; i < 3; i++) {
             String n = cfg.getString("name" + i, defName[i]);
+            if (contactBadge[i] == null) continue;
             contactBadge[i].setLabel(n.length() > 0 ? n.substring(0, 1).toUpperCase() : "?");
             contactBadge[i].setPrimary(i == cfg.getInt("primary", 0));
         }
@@ -2553,32 +2442,56 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Welcome guide: overlay permission, then notification access, then usage access (one screen per return to the launcher). */
+    /** Welcome guide, one Android screen per return to the launcher: home app, overlay permission, notification access. */
     private void guideNext() {
-        int g = cfg.getInt("guide", 3);
+        int g = cfg.getInt("guide", 9);
         if (g == 1) {
             cfg.edit().putInt("guide", 2).apply();
-            String en = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
-            if (en == null || !en.contains(getPackageName())) {
-                Toast.makeText(this, "Switch KORE ON (turn-by-turn info), then press Back", Toast.LENGTH_LONG).show();
+            if (!isDefaultHome()) {
+                Toast.makeText(this, "Choose Rehome: for you as the home app and tap Always", Toast.LENGTH_LONG).show();
                 try {
-                    startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));
+                    startActivity(new Intent(Settings.ACTION_HOME_SETTINGS));
                     return;
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    // older Android: pressing Home asks which launcher to use
+                    Intent h = new Intent(Intent.ACTION_MAIN);
+                    h.addCategory(Intent.CATEGORY_HOME);
+                    h.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    try {
+                        startActivity(h);
+                        return;
+                    } catch (Exception ignored) {
+                    }
                 }
             }
             g = 2;
         }
         if (g == 2) {
             cfg.edit().putInt("guide", 3).apply();
-            if (!AppWatcher.granted(this)) {
-                Toast.makeText(this, "Switch KORE ON (needed only for per-app rules), then press Back", Toast.LENGTH_LONG).show();
+            if (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this)) {
+                askOverlayPermission();
+                return;
+            }
+            g = 3;
+        }
+        if (g == 3) {
+            cfg.edit().putInt("guide", 9).apply();
+            String en = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
+            if (en == null || !en.contains(getPackageName())) {
+                Toast.makeText(this, "Switch Rehome ON (turn-by-turn info), then press Back", Toast.LENGTH_LONG).show();
                 try {
-                    startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS));
+                    startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));
                 } catch (Exception ignored) {
                 }
             }
         }
+    }
+
+    private boolean isDefaultHome() {
+        Intent h = new Intent(Intent.ACTION_MAIN);
+        h.addCategory(Intent.CATEGORY_HOME);
+        android.content.pm.ResolveInfo ri = getPackageManager().resolveActivity(h, PackageManager.MATCH_DEFAULT_ONLY);
+        return ri != null && ri.activityInfo != null && getPackageName().equals(ri.activityInfo.packageName);
     }
 
     private void recreateSoon() {
@@ -2592,14 +2505,12 @@ public class MainActivity extends Activity {
 
     private void startGuide() {
         cfg.edit().putInt("guide", 1).apply();
-        boolean needOverlay = Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this);
-        askOverlayPermission();
-        if (!needOverlay) guideNext();
+        guideNext();
     }
 
     private void askOverlayPermission() {
         if (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, "Allow \"Display over other apps\" for the floating buttons and the screen frame", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Allow \"Display over other apps\" for the frame and floating buttons", Toast.LENGTH_LONG).show();
             try {
                 startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                         Uri.parse("package:" + getPackageName())));
@@ -2611,31 +2522,30 @@ public class MainActivity extends Activity {
     private void showWelcome() {
         LinearLayout l = column();
         TextView m = new TextView(this);
-        m.setText("Welcome! A few quick steps (you can redo any of them later in settings, gear icon):\n\n"
-                + "1. Choose the driver's seat side below. The floating buttons start on that side.\n"
-                + "2. Allow \"display over other apps\" when asked (for the frame and floating buttons).\n"
-                + "3. You will then be taken to Notification access (turn-by-turn info from Google Maps) and Usage access (per-app rules). Switch KORE ON in each and press Back.");
+        m.setText("Three quick choices. You can change all of them later.");
         m.setTextColor(WHITE);
         m.setTextSize(16);
-        m.setPadding(0, rdp(10), 0, rdp(10));
+        m.setPadding(0, rdp(6), 0, rdp(6));
         l.addView(m);
-        final CheckBox pipChk = check(l, "My unit shows a 360 camera window (PIP) over the launcher. Untick for the simple full-width layout.", true);
-        Panel p = new Panel("Welcome to KORE", l, true);
+        label(l, "Look");
+        final RadioGroup thG = radios(l, new String[]{"Dark (recommended)", "Automatic: dark at night, light by day"}, 7100, 0);
+        label(l, "Where does the driver sit?");
+        final RadioGroup seatG = radios(l, new String[]{"Right side", "Left side"}, 7200, 0);
+        final CheckBox pipChk = check(l, "My unit shows a small 360 camera window over the launcher", true);
+        label(l, "After that Android will ask you for a few switches (home app, display over other apps, notification access). "
+                + "Say yes to each. To open the settings later, hold the 360° button or tap the gear icon.");
+        Panel p = new Panel("Welcome to Rehome", l, true);
         p.d.setCancelable(false);
         p.d.setCanceledOnTouchOutside(false);
-        p.button("Driver on the left", new Runnable() {
+        p.button("Start", new Runnable() {
             @Override
             public void run() {
-                cfg.edit().putInt("seat", 1).putBoolean("pipOn", pipChk.isChecked()).remove("floatX").remove("floatY").apply();
+                cfg.edit().putInt("theme", checkedIdx(thG, 7100, 2, 0) == 0 ? 2 : 0)
+                        .putInt("seat", checkedIdx(seatG, 7200, 2, 0))
+                        .putBoolean("pipOn", pipChk.isChecked())
+                        .remove("floatX").remove("floatY").apply();
                 startGuide();
-                if (!pipChk.isChecked()) recreateSoon();
-            }
-        }).button("Driver on the right", new Runnable() {
-            @Override
-            public void run() {
-                cfg.edit().putInt("seat", 0).putBoolean("pipOn", pipChk.isChecked()).remove("floatX").remove("floatY").apply();
-                startGuide();
-                if (!pipChk.isChecked()) recreateSoon();
+                recreateSoon();
             }
         }).show();
     }
@@ -2823,13 +2733,54 @@ public class MainActivity extends Activity {
                     select.on(idx);
                 }
             });
+            if (names.get(k).equals("About")) {
+                t.setOnLongClickListener(new View.OnLongClickListener() {
+                    @Override
+                    public boolean onLongClick(View v) {
+                        boolean now = !cfg.getBoolean("advanced", false);
+                        cfg.edit().putBoolean("advanced", now).apply();
+                        Toast.makeText(MainActivity.this, now ? "Advanced call settings shown. Close and reopen settings."
+                                : "Advanced call settings hidden. Close and reopen settings.", Toast.LENGTH_LONG).show();
+                        return true;
+                    }
+                });
+            }
             tv[k] = t;
             tabs.addView(t, new LinearLayout.LayoutParams(-1, -2));
         }
-        ScrollView tabScroll = new ScrollView(this);
+        final ScrollView tabScroll = new ScrollView(this);
         tabScroll.setBackgroundColor(0x66000000);
         tabScroll.addView(tabs);
-        h.addView(tabScroll, new LinearLayout.LayoutParams(rdp(190), -1));
+        final TextView up = new TextView(this);
+        up.setText("▲  more");
+        final TextView down = new TextView(this);
+        down.setText("▼  more");
+        for (TextView hint : new TextView[]{up, down}) {
+            hint.setTextColor(WHITE);
+            hint.setTextSize(13);
+            hint.setGravity(Gravity.CENTER);
+            hint.setBackgroundColor(0xCC000000);
+            hint.setPadding(0, rdp(5), 0, rdp(5));
+        }
+        FrameLayout tabBox = new FrameLayout(this);
+        tabBox.addView(tabScroll, new FrameLayout.LayoutParams(-1, -1));
+        tabBox.addView(up, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
+        tabBox.addView(down, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
+        final Runnable hints = new Runnable() {
+            @Override
+            public void run() {
+                up.setVisibility(tabScroll.canScrollVertically(-1) ? View.VISIBLE : View.GONE);
+                down.setVisibility(tabScroll.canScrollVertically(1) ? View.VISIBLE : View.GONE);
+            }
+        };
+        tabScroll.getViewTreeObserver().addOnScrollChangedListener(new android.view.ViewTreeObserver.OnScrollChangedListener() {
+            @Override
+            public void onScrollChanged() {
+                hints.run();
+            }
+        });
+        tabScroll.post(hints);
+        h.addView(tabBox, new LinearLayout.LayoutParams(rdp(190), -1));
         h.addView(content, new LinearLayout.LayoutParams(0, -1, 1f));
         if (names.size() > 0) select.on(0);
         return h;
@@ -3048,6 +2999,43 @@ public class MainActivity extends Activity {
         final ArrayList<LinearLayout> secViews = new ArrayList<LinearLayout>();
         LinearLayout l = null;
 
+        l = newSec(secNames, secViews, "Guide");
+        label(l, "Opening settings: hold the 360° button, or tap the gear icon in the bottom bar. More tabs are listed on the left: scroll the list (arrows show when there are more).");
+        label(l, "YouTube with the screen off or in the background: use the Brave browser and tap the video button (it opens YouTube in Brave).");
+        linkButton(l, "Download Brave (official page)", "https://brave.com/download/");
+        linkButton(l, "Brave on APKPure (for units without a store)", "https://apkpure.com/search?q=brave%20browser");
+        label(l, "Brave opens many tabs? In Brave: menu (three dots) > Settings > Brave shields & privacy, and look for \"Close tabs on exit\" (the name and place differ between versions and it is missing in some). "
+                + "Otherwise open the tab switcher, tap the menu and choose Close all tabs now and then.");
+        label(l, "Flat offline map (default): a Mapsforge .map file for your country. Download it on a phone or computer, copy it to the unit (USB or the Download folder), then Settings > Map > Choose offline map file.");
+        linkButton(l, "Mapsforge maps (download.mapsforge.org)", "https://download.mapsforge.org/");
+        linkButton(l, "OpenAndroMaps (more map styles)", "https://www.openandromaps.org/en/downloads");
+        label(l, "3D map (optional): needs a vector .mbtiles file in the OpenMapTiles layout. Rehome cannot download it by itself, so get the file on a phone or computer, copy it to the unit, then Settings > Map > Map engine MapLibre 3D > Choose 3D map file. Files are large (a whole country can be several hundred MB).");
+        linkButton(l, "OpenMapTiles downloads", "https://openmaptiles.org/downloads/");
+        label(l, "Turn-by-turn info on the map comes from Google Maps notifications: switch Rehome ON under Android's Notification access.");
+        Button notifB = flat("Open Notification access");
+        notifB.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                try {
+                    startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));
+                } catch (Exception ignored) {
+                }
+            }
+        });
+        addFull(l, notifB);
+        Button homeB = flat("Set Rehome as the home app");
+        homeB.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                try {
+                    startActivity(new Intent(Settings.ACTION_HOME_SETTINGS));
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "Press the Home button and choose Rehome: for you, then Always", Toast.LENGTH_LONG).show();
+                }
+            }
+        });
+        addFull(l, homeB);
+
         l = newSec(secNames, secViews, "Apps");
         appButton(l, "Radio app", radioPkg);
         appButton(l, "360 camera app", camPkg);
@@ -3058,12 +3046,31 @@ public class MainActivity extends Activity {
 
         l = newSec(secNames, secViews, "Look");
         final RadioGroup thG = radios(l, new String[]{"Automatic: dark from sunset to sunrise",
-                "Fixed hours (set below)", "Always dark"}, 7000, cfg.getInt("theme", 0));
+                "Fixed hours (set below)", "Always dark"}, 7000, cfg.getInt("theme", 2));
         final EditText dayStart = numField(l, "Light mode starts at hour (0-23)", cfg.getInt("dayStart", 6));
         final EditText nightStart = numField(l, "Dark mode starts at hour (0-23)", cfg.getInt("nightStart", 18));
         label(l, "The sun/moon button in the bottom bar switches between your choice and always dark.");
-        final EditText vignette = numField(l, "Vignette strength in percent (0 = off; edges of the map, widget and bars)", vigStrength);
-        final EditText tileRad = numField(l, "Tile corner roundness in dp (0 = sharp)", tileRadius);
+        final EditText vignette = numField(l, "Vignette strength in percent (0 = off, 100 = strong, up to 200 for a very dark edge)", vigStrength);
+        final EditText tileRad = numField(l, "Bar corner roundness in dp (the rounded contacts bar; 0 = sharp)", tileRadius);
+        label(l, "Centre logo (a PNG shown at the top middle of the map, for example your car's badge). Nothing is shown unless you choose one.");
+        Button logoB = flat("Choose centre logo (PNG)");
+        logoB.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                pickFile(REQ_LOGO);
+            }
+        });
+        addFull(l, logoB);
+        Button logoOff = flat("Remove centre logo");
+        logoOff.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                cfg.edit().remove("logoFile").apply();
+                recreate();
+            }
+        });
+        addFull(l, logoOff);
+        final EditText logoSize = numField(l, "Centre logo size in dp", cfg.getInt("logoSize", 56));
         final EditText glowF = numField(l, "Icon glow in percent (0 = off)", iconGlow);
         label(l, "Theme file: colours, icons, menus and layout in one file. Export a template to edit it or give it to a designer, then import it.");
         Button expT = flat("Export theme template");
@@ -3103,13 +3110,15 @@ public class MainActivity extends Activity {
         final CheckBox pip = check(l, "Show the 360 window area (turn off for the simple full-width layout)", cfg.getBoolean("pipOn", true));
         final CheckBox avoid = check(l, "Keep the map and YouTube clear of the 360 window (turn info moves above it)", cfg.getBoolean("avoidPip", true));
         final CheckBox status = check(l, "Show the status bar (date and the three buttons)", cfg.getBoolean("showStatus", false));
-        label(l, "Status bar look");
-        final RadioGroup stG = radios(l, new String[]{"Black bar", "Soft shade over the map", "Nothing behind it"}, 4000, cfg.getInt("statusStyle", 1));
         label(l, "Driver's seat");
         final RadioGroup seatG = radios(l, new String[]{"Driver on the right", "Driver on the left"}, 8000, cfg.getInt("seat", 0));
         final CheckBox frame = check(l, "Draw the black margin and rounded corners over every app", cfg.getBoolean("frame", true));
-        label(l, "The margin and corner size are set in Calibrate layout and frame (above).");
-        final EditText ui = numField(l, "UI size in percent (100 = normal, try 80 to 130)", cfg.getInt("uiScale", 100));
+        final CheckBox frameExt = check(l, "Extended frame (simple layout only): the bottom of the frame grows into a bar with 360 and your primary contact", cfg.getBoolean("frameExt", false));
+        final EditText shH = numField(l, "Extended bar height in percent of the screen (8 to 30)", cfg.getInt("shieldH", 15));
+        final EditText shA = numField(l, "Extended bar angle in degrees (0 = square)", cfg.getInt("shieldAngle", 15));
+        final CheckBox noSys = check(l, "Do not draw the frame or bar over Android system apps (the 360 app is always covered)", cfg.getBoolean("noSystem", true));
+        label(l, "The frame and the extended bar do not let touches through. The margin and corner size are set in Calibrate layout and frame (above).");
+        final EditText ui = numField(l, "UI size in percent (100 = small, 130 = default, up to 160)", cfg.getInt("uiScale", 130));
         label(l, "Buttons in the bottom bar");
         final CheckBox[] dockChecks = new CheckBox[DOCK_IDS.length];
         String selD = "," + cfg.getString("dockItems", DOCK_DEFAULT) + ",";
@@ -3139,7 +3148,7 @@ public class MainActivity extends Activity {
         });
         addFull(l, pickMb);
         final EditText zoom = numField(l, "Map zoom (12 = far, 19 = very close; place names show less when very close)", cfg.getInt("mapZoom", 18));
-        final EditText mapText = numField(l, "Map text size in percent (100 = normal, 150 to 200 reads easier, 300 is the most)", cfg.getInt("mapText", 150));
+        final EditText mapText = numField(l, "Map text size in percent (100 = normal, 150 to 200 reads easier, 300 is the most)", cfg.getInt("mapText", 300));
         final CheckBox showInfo = check(l, "Show turn info and city name on the map", cfg.getBoolean("showInfo", true));
         TextView cur = new TextView(this);
         String mf = cfg.getString("mapFile", "");
@@ -3163,21 +3172,6 @@ public class MainActivity extends Activity {
             }
         });
         addFull(l, find);
-        Button navTest = flat("Navigation info test");
-        navTest.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                showNavDebug();
-            }
-        });
-        addFull(l, navTest);
-
-        l = newSec(secNames, secViews, "YouTube widget (the map/YouTube button)");
-        final RadioGroup ytG = radios(l, new String[]{"Notification: show what the YouTube app or browser is playing",
-                "Embedded page inside the launcher"}, 9000, cfg.getInt("ytSource", 0));
-        final CheckBox thumb = check(l, "Embedded page: show only the thumbnail while playing (sound keeps playing)", cfg.getBoolean("ytThumbOnly", true));
-        label(l, "YouTube page address");
-        final EditText ytUrl = field(l, "https://m.youtube.com", cfg.getString("ytUrl", "https://m.youtube.com"), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
 
         l = newSec(secNames, secViews, "360 camera and start-up");
         final CheckBox auto360 = check(l, "Show the 360 full screen when driving slowly (EXPERIMENTAL: test while parked first)", cfg.getBoolean("auto360", true));
@@ -3189,21 +3183,27 @@ public class MainActivity extends Activity {
         final EditText a360gap = numField(l, "Time gap in seconds (match your 360's small-window delay)", cfg.getInt("auto360Gap", 60));
         final EditText a360pause = numField(l, "Do nothing for this many seconds after a touch", cfg.getInt("auto360Pause", 20));
         final CheckBox a360video = check(l, "Also wait while a video is playing", cfg.getBoolean("auto360PauseVideo", false));
-        final EditText retry = numField(l, "Start 360 this many seconds after boot if it is not showing (0 = off)", cfg.getInt("boot360Retry", 4));
+        final EditText retry = numField(l, "Start 360 this many seconds after boot if it is not showing (0 = off)", cfg.getInt("boot360Retry", 5));
         final EditText auto = numField(l, "Open radio this many seconds after boot (0 = off)", cfg.getInt("autoRadio", 1));
 
         l = newSec(secNames, secViews, "Floating buttons");
-        final CheckBox floating = check(l, "Show the floating mute and home buttons", cfg.getBoolean("floating", true));
+        final CheckBox floating = check(l, "Show floating buttons", cfg.getBoolean("floating", true));
+        label(l, "Which buttons (Back and Mute depend on the unit and may not work; Home always does)");
+        final CheckBox[] btnChecks = new CheckBox[FloatingService.BTN_IDS.length];
+        String selB = "," + cfg.getString("floatBtns", "home") + ",";
+        for (int k = 0; k < btnChecks.length; k++) {
+            btnChecks[k] = check(l, FloatingService.BTN_NAMES[k], selB.contains("," + FloatingService.BTN_IDS[k] + ","));
+        }
+        label(l, "Where they show: only in the apps you choose. By default that is only the 360 app, because other apps have their own navigation buttons.");
+        addFull(l, appsButton("Choose apps for the floating buttons", "floatIn"));
+        final EditText fdelay = numField(l, "Show the interface and floating buttons this many extra seconds after the 360 start check (0 to 59)", cfg.getInt("floatDelay", 5));
         final CheckBox lock = check(l, "Lock floating button position", cfg.getBoolean("floatLock", false));
         final EditText fsize = numField(l, "Button size in dp", cfg.getInt("floatSize", 84));
         label(l, "Colour");
         String[] colNames = new String[4];
         for (int k = 0; k < 4; k++) colNames[k] = FloatingService.COLOR_NAMES[k];
         final RadioGroup colG = radios(l, colNames, 6000, cfg.getInt("floatColor", 0));
-        label(l, "Second floating button");
-        final RadioGroup secG = radios(l, new String[]{"Back (needs a unit that allows it, otherwise it acts as Home)", "Home"},
-                9300, cfg.getInt("floatSecond", 0));
-        label(l, "What the mute button does (try each until the radio goes quiet)");
+        label(l, "What the Mute button does (it may not work on every unit: try each until the radio goes quiet)");
         final RadioGroup muteG = radios(l, new String[]{
                 "Like the system mute key (recommended)",
                 "Mute the media stream",
@@ -3212,31 +3212,10 @@ public class MainActivity extends Activity {
                 "Send a broadcast (action below)"}, 9200, cfg.getInt("muteMode", 0));
         final EditText muteAction = field(l, "Broadcast action for mute (only for that mode)", cfg.getString("muteAction", ""), InputType.TYPE_CLASS_TEXT);
 
-        l = newSec(secNames, secViews, "Per-app rules");
-        label(l, "These rules need Usage access (one switch in Android settings). The helper only reads which app is open, "
-                + "once a second, and only while a rule is on.");
-        final Button usage = flat(AppWatcher.granted(this) ? "Usage access: ON (tap to change)" : "Turn on Usage access");
-        usage.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                try {
-                    startActivity(new Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS));
-                } catch (Exception e) {
-                    Toast.makeText(MainActivity.this, "Open Android settings > Usage access", Toast.LENGTH_LONG).show();
-                }
-            }
-        });
-        addFull(l, usage);
-        final CheckBox shieldOn = check(l, "Show the shield bar in other apps (a bar at the bottom with 360 and the primary contact; touches do not pass through it)", cfg.getBoolean("shieldOn", false));
-        final EditText shH = numField(l, "Shield bar height in percent of the screen (8 to 30)", cfg.getInt("shieldH", 15));
-        final EditText shA = numField(l, "Shield bar angle in degrees (0 = plain flat bar)", cfg.getInt("shieldAngle", 15));
-        addFull(l, exclusionsButton());
-        label(l, "In the list, tick where each app should NOT show the frame (F), the shield bar (S) or the floating buttons (B). "
-                + "The launcher's own home screen never shows the shield bar.");
-
+        // the call tab normally shows only how to call; the rest appears after holding the About tab
+        final boolean adv = cfg.getBoolean("advanced", false);
         l = newSec(secNames, secViews, "Calling");
-        final RadioGroup rg = radios(l, new String[]{"Call straight away", "Open the dial screen first",
-                "Macro broadcast"}, 1000, cfg.getInt("callMode", 0));
+        label(l, "Call through Bluetooth (the phone connected to the unit) or through the unit's own SIM (a phone account from Google).");
         final Button accBtn = flat("Call through: " + accountLabel(account[0]));
         accBtn.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -3245,37 +3224,21 @@ public class MainActivity extends Activity {
             }
         });
         addFull(l, accBtn);
-        final EditText macro = field(l, "Macro broadcast action (only for macro mode)", cfg.getString("macroAction", ""), InputType.TYPE_CLASS_TEXT);
+        LinearLayout callAdv = adv ? l : column();
+        final RadioGroup rg = radios(callAdv, new String[]{"Call straight away", "Open the dial screen first",
+                "Macro broadcast"}, 1000, cfg.getInt("callMode", 0));
+        final EditText macro = field(callAdv, "Macro broadcast action (only for macro mode)", cfg.getString("macroAction", ""), InputType.TYPE_CLASS_TEXT);
 
-        l = newSec(secNames, secViews, "Steering-wheel voice button");
-        label(l, "Easiest: in your unit's voice or Speech app list (for example TW Radio Select, Speech) pick \"KORE Call\". Pressing the wheel button then calls the primary contact.");
+        l = adv ? newSec(secNames, secViews, "Steering-wheel voice button") : column();
+        label(l, "Easiest: in your unit's voice or Speech app list (for example TW Radio Select, Speech) pick \"Rehome Call\". Pressing the wheel button then calls the primary contact.");
         label(l, "If the unit sends a key to the launcher itself:");
         final RadioGroup voiceG = radios(l, new String[]{"Call the primary contact", "Open the voice assistant app",
                 "Send a macro broadcast"}, 2000, cfg.getInt("voiceMode", 0));
         final EditText wheelMacro = field(l, "Macro action for the wheel button (only for macro mode)", cfg.getString("wheelMacro", ""), InputType.TYPE_CLASS_TEXT);
         appButton(l, "Voice assistant app", voicePkg);
 
-        l = newSec(secNames, secViews, "Backup");
-        label(l, "Save every setting (apps, contacts, layout, theme, map file path) to one file, and load it back later or on another unit. The file contains your contacts' phone numbers, so keep it private.");
-        Button expS = flat("Save all settings to a file");
-        expS.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                exportSettings();
-            }
-        });
-        addFull(l, expS);
-        Button impS = flat("Load settings from a file");
-        impS.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                pickSettingsFile();
-            }
-        });
-        addFull(l, impS);
-
         l = newSec(secNames, secViews, "About");
-        TextView ab = label(l, "KORE  v" + versionName());
+        TextView ab = label(l, "Rehome  v" + versionName());
         ab.setTextColor(cText);
         ab.setTextSize(18);
         label(l, "A home screen for the Honda Vezel / HR-V head unit: map, 360 camera, radio, YouTube and calls on one screen.");
@@ -3319,11 +3282,8 @@ public class MainActivity extends Activity {
                                 .putString("pkgCar", carPkg[0])
                                 .putInt("mapStyle", checkedIdx(styG, 5000, 2, 0))
                                 .putInt("mapZoom", Math.max(12, Math.min(19, intOf(zoom, 18))))
-                                .putInt("mapText", Math.max(100, Math.min(300, intOf(mapText, 150))))
+                                .putInt("mapText", Math.max(100, Math.min(300, intOf(mapText, 300))))
                                 .putBoolean("showInfo", showInfo.isChecked())
-                                .putInt("ytSource", checkedIdx(ytG, 9000, 2, 0))
-                                .putBoolean("ytThumbOnly", thumb.isChecked())
-                                .putString("ytUrl", ytUrl.getText().toString().trim())
                                 .putInt("theme", checkedIdx(thG, 7000, 3, 0))
                                 .putInt("dayStart", Math.max(0, Math.min(23, intOf(dayStart, 6))))
                                 .putInt("nightStart", Math.max(0, Math.min(23, intOf(nightStart, 18))))
@@ -3334,32 +3294,34 @@ public class MainActivity extends Activity {
                                 .putInt("auto360Gap", Math.max(5, intOf(a360gap, 60)))
                                 .putInt("auto360Pause", Math.max(0, intOf(a360pause, 20)))
                                 .putBoolean("auto360PauseVideo", a360video.isChecked())
-                                .putInt("boot360Retry", Math.max(0, intOf(retry, 4)))
+                                .putInt("boot360Retry", Math.max(0, intOf(retry, 5)))
                                 .putInt("autoRadio", Math.max(0, intOf(auto, 1)))
                                 .putBoolean("floating", floating.isChecked())
                                 .putBoolean("floatLock", lock.isChecked())
                                 .putInt("floatSize", Math.max(48, Math.min(160, intOf(fsize, 84))))
                                 .putInt("floatColor", checkedIdx(colG, 6000, 4, 0))
                                 .putInt("muteMode", checkedIdx(muteG, 9200, 5, 0))
-                                .putInt("floatSecond", checkedIdx(secG, 9300, 2, 0))
                                 .putInt("mapEngine", checkedIdx(engG, 5100, 2, 0))
+                                .putInt("logoSize", Math.max(24, Math.min(160, intOf(logoSize, 56))))
                                 .putInt("mapTilt", Math.max(0, Math.min(70, intOf(tilt, 55))))
-                                .putBoolean("shieldOn", shieldOn.isChecked())
+                                .putBoolean("frameExt", frameExt.isChecked())
+                                .putBoolean("noSystem", noSys.isChecked())
+                                .putString("floatBtns", pickedButtons(btnChecks))
+                                .putInt("floatDelay", Math.max(0, Math.min(59, intOf(fdelay, 5))))
                                 .putInt("shieldH", Math.max(8, Math.min(30, intOf(shH, 15))))
                                 .putInt("shieldAngle", Math.max(0, Math.min(60, intOf(shA, 15))))
                                 .putString("muteAction", muteAction.getText().toString().trim())
                                 .putInt("callMode", checkedIdx(rg, 1000, 3, 0))
                                 .putString("macroAction", macro.getText().toString().trim())
                                 .putBoolean("showStatus", status.isChecked())
-                                .putInt("statusStyle", checkedIdx(stG, 4000, 3, 1))
                                 .putBoolean("pipOn", pip.isChecked())
                                 .putBoolean("avoidPip", avoid.isChecked())
                                 .putInt("seat", seat)
                                 .putBoolean("frame", frame.isChecked())
                                 .putInt("uiScale", sc);
                         // theme values stay in charge unless a number was changed here
-                        keepOrRemove(ed, "vignette", Math.max(0, Math.min(100, intOf(vignette, vigStrength))), themeJ.optInt("vignette", 50));
-                        keepOrRemove(ed, "tileRadius", Math.max(0, Math.min(40, intOf(tileRad, tileRadius))), themeJ.optInt("tileRadius", 8));
+                        keepOrRemove(ed, "vignette", Math.max(0, Math.min(200, intOf(vignette, vigStrength))), themeJ.optInt("vignette", 50));
+                        keepOrRemove(ed, "tileRadius", Math.max(0, Math.min(60, intOf(tileRad, tileRadius))), themeJ.optInt("tileRadius", 30));
                         keepOrRemove(ed, "iconGlow", Math.max(0, Math.min(100, intOf(glowF, iconGlow))), themeJ.optInt("iconGlow", 45));
                         StringBuilder dk = new StringBuilder();
                         for (int k = 0; k < DOCK_IDS.length; k++) {
@@ -3499,7 +3461,7 @@ public class MainActivity extends Activity {
 
     // ------------------------------------------------------------------ offline map file
 
-    private static final int REQ_MAP = 77, REQ_MB = 80;
+    private static final int REQ_MAP = 77, REQ_MB = 80, REQ_LOGO = 81;
 
     private void pickFile(int req) {
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -3530,6 +3492,8 @@ public class MainActivity extends Activity {
             copyMap(data.getData(), "offline.map", "mapFile");
         } else if (req == REQ_MB && res == RESULT_OK && data != null && data.getData() != null) {
             copyMap(data.getData(), "offline.mbtiles", "mbFile");
+        } else if (req == REQ_LOGO && res == RESULT_OK && data != null && data.getData() != null) {
+            copyMap(data.getData(), "logo.png", "logoFile");
         } else if (req == REQ_THEME && res == RESULT_OK && data != null && data.getData() != null) {
             importTheme(data.getData());
         } else if (req == REQ_SETTINGS && res == RESULT_OK && data != null && data.getData() != null) {
@@ -3709,7 +3673,12 @@ public class MainActivity extends Activity {
             state = s;
             invalidate();
         }
-        private final int type;
+        private int type;
+
+        void setType(int t) {
+            type = t;
+            invalidate();
+        }
         private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint hole = new Paint(Paint.ANTI_ALIAS_FLAG);

@@ -1,4 +1,4 @@
-# KORE: Supplementary Car Launcher
+# Rehome: Launcher for Car
 
 A minimal, car-first home screen for Android head units. Black, grey and cool-white chrome, sharp panels, a live map, one-tap calls and a tyre-pressure slot.
 
@@ -13,16 +13,16 @@ Built and tested on a Honda Vezel (2025) with a Nakamichi NAM5850 aftermarket un
 - **Navigation info:** reads the navigation notification (Google Maps, Waze, OsmAnd). Settings > Map has a test button.
 - **360 camera:** opens automatically when slow (GPS speed), optional retry after boot.
 - **YouTube widget:** notification or embedded page, thumbnail only, play/pause.
-- **Calls:** one-tap contacts, account chooser (Bluetooth or SIM), steering-wheel voice button through "KORE Call".
+- **Calls:** one-tap contacts, account chooser (Bluetooth or SIM), steering-wheel voice button through "Rehome Call".
 - **Floating buttons and frame:** neon Mute and Home buttons above every app, and a click-through 4-corner black frame.
 - **Themes:** the whole look is one JSON file. See THEMING.md.
 - **Day and night:** automatic from GPS sunrise and sunset, fixed hours, or always dark.
 
 ## Install
 
-1. Open the **Releases** page of this repository and download `KORE.apk` from the latest release.
+1. Open the **Releases** page of this repository and download `Rehome.apk` from the latest release.
 2. On the head unit (or phone), allow installing from unknown sources for your file manager or browser, then open the APK. Play Protect on a phone may warn about the app because it asks for powerful permissions (display over other apps, notification access). Choose **Install anyway**.
-3. Press Home and choose **KORE**. Pick **Always**, if offered.
+3. Press Home and choose **Rehome**. Pick **Always**, if offered.
 4. Allow **Location** and **Phone** permissions, and the "display over other apps" permission for the floating buttons and frame.
 5. Grant **notification access** when asked. It is needed for navigation info and the YouTube thumbnail.
 6. Open Settings (gear icon) and choose your radio app, your 360 app and your driver seat.

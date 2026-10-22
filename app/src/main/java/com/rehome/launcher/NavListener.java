@@ -1,4 +1,4 @@
-package com.kore.launcher;
+package com.rehome.launcher;
 
 import android.app.Notification;
 import android.content.Context;
