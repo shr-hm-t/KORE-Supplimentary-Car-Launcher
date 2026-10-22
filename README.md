@@ -1,4 +1,4 @@
-# KORE: Supplementary Car Launcher
+# Rehome Supplementary Car Launcher (old names: KORE, ...
 
 A minimal, car-first home screen for Android head units. Black, grey and cool-white chrome, sharp panels, a live map, one-tap calls and a tyre-pressure slot.
 
