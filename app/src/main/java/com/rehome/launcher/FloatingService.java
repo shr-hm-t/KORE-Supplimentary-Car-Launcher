@@ -187,12 +187,14 @@ public class FloatingService extends Service {
             p.setStyle(Paint.Style.FILL);
             p.setShader(new android.graphics.LinearGradient(0, 0, 0, h, 0xFF0E141B, 0xFF070A0E, android.graphics.Shader.TileMode.CLAMP));
             c.drawRect(0, 0, w, h, p);
-            float r = Math.max(w, h) * 0.55f;
-            p.setShader(new android.graphics.RadialGradient(w * 0.12f, h * 0.95f, r,
-                    ((int) (60 + 70 * b1) << 24) | 0xC8641A, 0x00000000, android.graphics.Shader.TileMode.CLAMP));
+            // one soft glow in the middle that slowly breathes (amber warm, blue cool)
+            float r = Math.min(w, h) * (0.62f + 0.12f * b1);
+            p.setShader(new android.graphics.RadialGradient(w / 2f, h / 2f, r,
+                    ((int) (50 + 70 * b1) << 24) | 0xC8641A, 0x00000000, android.graphics.Shader.TileMode.CLAMP));
             c.drawRect(0, 0, w, h, p);
-            p.setShader(new android.graphics.RadialGradient(w * 0.88f, h * 0.05f, r,
-                    ((int) (60 + 70 * b2) << 24) | 0x2D6CC8, 0x00000000, android.graphics.Shader.TileMode.CLAMP));
+            float r2 = Math.max(w, h) * (0.55f + 0.10f * b2);
+            p.setShader(new android.graphics.RadialGradient(w / 2f, h / 2f, r2,
+                    ((int) (40 + 60 * b2) << 24) | 0x2D6CC8, 0x00000000, android.graphics.Shader.TileMode.CLAMP));
             c.drawRect(0, 0, w, h, p);
             p.setShader(null);
             if (logo != null) {

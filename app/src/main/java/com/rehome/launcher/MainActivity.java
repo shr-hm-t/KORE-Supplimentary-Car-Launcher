@@ -1239,12 +1239,26 @@ public class MainActivity extends Activity {
         int[] px = new int[bw * bh];
         float inner = 0.49f * vigSpread / 100f;
         float outer = Math.max(inner + 0.1f, 1.16f - 0.32f * extra);
-        double pw = vigShape == 3 ? 0.7 : (vigShape == 2 ? 4.0 : 2.0);
+        double pw = vigShape == 2 ? 4.0 : 2.0;
         float rad = Math.max(w, h) / 2f;
+        float band0 = Math.min(0.95f, (0.55f - 0.18f * extra) * (100f / vigSpread));
         for (int y = 0; y < bh; y++) {
             float ny = (y + 0.5f) / bh * 2f - 1f;
             for (int x = 0; x < bw; x++) {
                 float nx = (x + 0.5f) / bw * 2f - 1f;
+                if (vigShape == 3) {
+                    // star: dark bands along the four edges, thickest in the middle of each edge and
+                    // thinning to nothing at the corners (the corners stay lightest)
+                    float ax = Math.abs(nx), ay = Math.abs(ny);
+                    float mx = Math.max(ax, ay), mn = Math.min(ax, ay);
+                    float k = mx <= 0f ? 0f : mn / mx;
+                    float e = 1f - mx;
+                    float band = Math.max(0.02f, band0 * (1f - 0.92f * k * k));
+                    float t = Math.max(0f, Math.min(1f, e / band));
+                    t = 1f - t * t * (3f - 2f * t);
+                    px[y * bw + x] = (Math.round(a * t) << 24) | clear;
+                    continue;
+                }
                 float d;
                 if (vigShape == 1) {
                     float dx = nx * w / 2f / rad, dy = ny * h / 2f / rad;
@@ -3322,7 +3336,7 @@ public class MainActivity extends Activity {
         final RadioGroup vigG = radios(l, new String[]{"Automatic: surround when always dark, soft bottom fade otherwise",
                 "Surround (dark all around the edge)", "Fade (soft darkening at the bottom and top)"}, 4000, cfg.getInt("vigStyle", 0));
         label(l, "Surround shape");
-        final RadioGroup shapeG = radios(l, new String[]{"Oval, fitted to the screen", "Circle", "Rounded rectangle", "Star: the four edges curve inward, corners darkest"}, 4100, vigShape);
+        final RadioGroup shapeG = radios(l, new String[]{"Oval, fitted to the screen", "Circle", "Rounded rectangle", "Star: dark bands along the edges, thinnest at the corners (corners lightest)"}, 4100, vigShape);
         final EditText spread = numField(l, "Vignette spread in percent (50 = reaches far in, 150 = only the edge)", vigSpread);
         final EditText ytV = numField(l, "Vignette strength over the YouTube widget (0 = off)", ytVig);
         final EditText tileRad = numField(l, "Bar corner roundness in dp (the rounded contacts bar; 0 = sharp)", tileRadius);

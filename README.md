@@ -29,7 +29,8 @@ Java 17, Gradle 8.9. Run `gradle assembleRelease`, or use the **Build APK** work
 ## Extras
 
 - [`boot`](boot): boot logo and boot animation preview
-- [`docs/ASSET_PROMPTS.md`](docs/ASSET_PROMPTS.md): prompts for making icons and UI art
+- [`docs/ASSET_PROMPTS.md`](docs/ASSET_PROMPTS.md) and [`docs/ASSET_PROMPT_ONE_SHEET.md`](docs/ASSET_PROMPT_ONE_SHEET.md): prompts for making icons and UI art
+- [`docs/SHOWCASE_PROMPTS.md`](docs/SHOWCASE_PROMPTS.md): prompts for showcase pictures
 
 ## Privacy
 
