@@ -2017,7 +2017,7 @@ public class MainActivity extends Activity {
         ytPlayGlyph.setVisibility(ytPlayingNow ? View.GONE : View.VISIBLE);
         ytPauseGlyph.setVisibility(ytPlayingNow ? View.VISIBLE : View.GONE);
         // the switch button shows a map pin while the map is the widget, and the video icon while media is
-        for (Glyph g : switchGlyphs) g.setType(mediaShown() ? Glyph.MAP : Glyph.YT);
+        for (Glyph g : switchGlyphs) g.setType(mediaShown() ? Glyph.YT : Glyph.MAP);
     }
 
     private MediaController pickSession() {
