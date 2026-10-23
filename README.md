@@ -1,4 +1,4 @@
-# Rehome: Launcher for Car
+# Rehome: Launcher for Car (old names: KORE, Vezel Launcher)
 
 A minimal, car-first home screen for Android head units. Black, grey and cool-white chrome, sharp panels, a live map, one-tap calls and a tyre-pressure slot.
 
@@ -65,7 +65,7 @@ Everything stays on the device. The map is fully offline. The only network reque
 ## Credits
 
 - [Claude](https://claude.ai) (Anthropic): code, build setup, design iterations, documentation.
-- ChatGPT (OpenAI) and Gemini (Google): design ideas and early icons.
+- ChatGPT (OpenAI), Gemini (Google) and Grok: design ideas and early icons.
 - Idea, direction, hardware testing and feedback: the project owner.
 
 Map rendering by [Mapsforge](https://github.com/mapsforge/mapsforge). Map data © OpenStreetMap contributors.
@@ -77,3 +77,7 @@ An independent hobby project. It is not affiliated with Honda, Nakamichi or any 
 ## License
 
 No licence has been chosen yet, so all rights are reserved until one is added.
+
+## Boot logo and boot animation
+
+A preview boot logo and a 15-frame boot animation (1 fps) are in the [`boot`](boot) folder, with installation notes in [`boot/README.md`](boot/README.md).
