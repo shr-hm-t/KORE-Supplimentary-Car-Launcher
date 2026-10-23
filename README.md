@@ -1,6 +1,6 @@
 # Rehome: Launcher for Car
 
-<img align="left" src="https://github.com/shr-hm-t/rehome-launcher-for-car/blob/21fa84ed2c17ec3d4f2add3c25a6f384b5491e5d/assets/image.png" alt="Rehome Launcher Showcase" width="300" style="max-width: 100%; margin-right: 15px; margin-bottom: 10px;">
+<img align="left" src="https://github.com/shr-hm-t/rehome-launcher-for-car/blob/21fa84ed2c17ec3d4f2add3c25a6f384b5491e5d/assets/image.png">
 
 A simple home screen for Android car head units: offline map, 360 camera window, radio, one-tap contacts, and a dark glass look.
 
@@ -42,6 +42,6 @@ Everything stays on the device. The only network request the launcher makes is t
 
 ## Credits
 
-Claude (Anthropic) is the lead builder and designer. Google AI creates images and media. ChatGPT and Grok helped in a minor way. Idea, direction and testing: the project owner. Map rendering by [Mapsforge](https://github.com); map data © OpenStreetMap contributors.
+Claude (Anthropic) is the lead builder and designer. Google AI and ChatGPT creates images and media. Grok helped in a minor way. Idea, direction and testing: the project owner. Map rendering by [Mapsforge](https://github.com); map data © OpenStreetMap contributors.
 
 An independent hobby project, not affiliated with any brand named here. No licence has been chosen yet, so all rights are reserved.
