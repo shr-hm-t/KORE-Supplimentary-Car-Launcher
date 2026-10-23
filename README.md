@@ -1,5 +1,7 @@
 # Rehome: Launcher for Car
 
+![Centered Image](assets/image.png)
+
 A simple home screen for Android car head units: offline map, 360 camera window, radio, one-tap contacts, and a dark glass look.
 
 Built and tested on one car with a Nakamichi NAM5850 unit. Other landscape units may behave differently.
