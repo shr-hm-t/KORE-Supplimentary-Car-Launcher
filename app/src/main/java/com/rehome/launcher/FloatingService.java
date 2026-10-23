@@ -46,6 +46,9 @@ public class FloatingService extends Service {
 
     /** True while the frame is on screen (the launcher then skips drawing its own copy). */
     static volatile boolean frameOn = false;
+    /** Set by the launcher once its interface is up; until then the service only shows the start-up cover. */
+    static volatile boolean uiAllowed = false;
+    private boolean built = false;
     private static FloatingService inst;
 
     /** Black screen that fades out, hides the start-up screens of the 360 app. */
@@ -54,7 +57,7 @@ public class FloatingService extends Service {
         if (s != null) s.ui.post(new Runnable() {
             @Override
             public void run() {
-                s.showCover();
+                s.showCover(false);
             }
         });
     }
@@ -134,6 +137,8 @@ public class FloatingService extends Service {
 
     @Override
     public int onStartCommand(Intent i, int flags, int startId) {
+        if (i != null && i.getBooleanExtra("bootCover", false)) showCover(true);
+        if (uiAllowed && !built && wm != null) buildAll();
         return START_STICKY;
     }
 
@@ -159,11 +164,53 @@ public class FloatingService extends Service {
 
     private View coverView;
 
-    private void showCover() {
-        if (!cfg.getBoolean("coverOn", true) || wm == null) return;
+    /** Soft glowing start-up screen: dark navy with a slowly breathing amber and blue glow, and the logo. */
+    private class CoverView extends View {
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private android.graphics.Bitmap logo;
+        private final long t0 = System.currentTimeMillis();
+
+        CoverView(Context c) {
+            super(c);
+            String lf = cfg.getString("logoFile", "");
+            if (lf.length() > 0 && new java.io.File(lf).exists()) {
+                logo = android.graphics.BitmapFactory.decodeFile(lf);
+            }
+        }
+
+        @Override
+        protected void onDraw(Canvas c) {
+            float w = getWidth(), h = getHeight();
+            double t = (System.currentTimeMillis() - t0) / 1000.0;
+            float b1 = (float) (0.5 + 0.5 * Math.sin(t * 1.4));
+            float b2 = (float) (0.5 + 0.5 * Math.sin(t * 1.1 + 2.0));
+            p.setStyle(Paint.Style.FILL);
+            p.setShader(new android.graphics.LinearGradient(0, 0, 0, h, 0xFF0E141B, 0xFF070A0E, android.graphics.Shader.TileMode.CLAMP));
+            c.drawRect(0, 0, w, h, p);
+            float r = Math.max(w, h) * 0.55f;
+            p.setShader(new android.graphics.RadialGradient(w * 0.12f, h * 0.95f, r,
+                    ((int) (60 + 70 * b1) << 24) | 0xC8641A, 0x00000000, android.graphics.Shader.TileMode.CLAMP));
+            c.drawRect(0, 0, w, h, p);
+            p.setShader(new android.graphics.RadialGradient(w * 0.88f, h * 0.05f, r,
+                    ((int) (60 + 70 * b2) << 24) | 0x2D6CC8, 0x00000000, android.graphics.Shader.TileMode.CLAMP));
+            c.drawRect(0, 0, w, h, p);
+            p.setShader(null);
+            if (logo != null) {
+                float s = Math.min(w, h) * 0.30f;
+                p.setAlpha((int) (150 + 100 * b1));
+                c.drawBitmap(logo, null, new RectF(w / 2f - s / 2f, h / 2f - s / 2f, w / 2f + s / 2f, h / 2f + s / 2f), p);
+                p.setAlpha(255);
+            }
+            postInvalidateOnAnimation();
+        }
+    }
+
+    private void showCover(boolean boot) {
+        int mode = cfg.getInt("coverMode", 2);
+        if (mode == 0 || (!boot && mode < 2) || wm == null) return;
         hideCover(false);
-        final View v = new View(this);
-        v.setBackgroundColor(Color.BLACK);
+        final View v = new CoverView(this);
+        v.setAlpha(0f);
         v.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View view, MotionEvent e) {
@@ -183,12 +230,14 @@ public class FloatingService extends Service {
             return;
         }
         coverView = v;
-        long ms = Math.max(1, Math.min(15, cfg.getInt("coverSec", 4))) * 1000L;
+        v.animate().alpha(1f).setDuration(boot ? 150 : 350).start();
+        long ms = (boot ? Math.max(1, Math.min(30, cfg.getInt("coverBootSec", 10)))
+                : Math.max(1, Math.min(15, cfg.getInt("coverSec", 4)))) * 1000L;
         ui.postDelayed(new Runnable() {
             @Override
             public void run() {
                 if (coverView != v) return;
-                v.animate().alpha(0f).setDuration(600).withEndAction(new Runnable() {
+                v.animate().alpha(0f).setDuration(900).withEndAction(new Runnable() {
                     @Override
                     public void run() {
                         if (coverView == v) hideCover(false);
@@ -414,7 +463,7 @@ public class FloatingService extends Service {
                     Intent i = getPackageManager().getLaunchIntentForPackage(cfg.getString("pkg360", ""));
                     if (i == null) return;
                     i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    showCover();
+                    showCover(false);
                     startActivity(i);
                 }
             });
@@ -568,7 +617,12 @@ public class FloatingService extends Service {
             return;
         }
         wm = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
+        if (uiAllowed) buildAll();
+    }
 
+    private void buildAll() {
+        if (built) return;
+        built = true;
         // 1) floating buttons (added first so rebuildFrame can keep them on top)
         if (cfg.getBoolean("floating", true)) {
             root = new LinearLayout(this);
@@ -681,7 +735,7 @@ public class FloatingService extends Service {
         Intent i = getPackageManager().getLaunchIntentForPackage(pkg);
         if (i == null) return;
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        if (pkg.equals(cfg.getString("pkg360", ""))) showCover();
+        if (pkg.equals(cfg.getString("pkg360", ""))) showCover(false);
         startActivity(i);
     }
 

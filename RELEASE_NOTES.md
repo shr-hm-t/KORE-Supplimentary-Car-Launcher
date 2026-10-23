@@ -14,10 +14,14 @@ Fixes and changes from the 1.5 car test.
 - **Bottom bar:** all buttons shown, order set in settings; two new buttons (open YouTube in the browser). With the 360 window layout, tapping the map/video button switches the widget. The app list is now a large icon grid.
 - **Defaults:** no 360 window, UI size 100, map always line art, call-and-wheel and extended-frame settings hidden until About is held, no icon glow, mute removed.
 - **Cover:** a black screen fades out while the 360 app starts.
+- **Start-up cover:** at boot (and, if you choose, each time the 360 app is opened from Rehome) a dark screen with a slowly breathing amber and blue glow and your logo fades in over the unit's start-up screens, then fades out. Time and mode are in the 360 camera and start-up tab.
+- **Vignette shapes:** oval, circle, rounded rectangle, and a four-point star where the four edges curve inward.
+- **Logo sparkle** (can be switched off).
+- **Emergency menu:** hold four fingers on the launcher for five seconds to open the settings or reset everything.
 - Names: the main app is **Rehome: Scroll**, the installer **Rehome: Installer**, the helper **Rehome: Call Plugin**.
 - Settings tab list shows a small arrow with a fade when there are more tabs below.
 
-Not done yet: flat redesigned icons, a Benz-style theme, the logo sprinkle effect, navigation as an overlay, the extended-frame fixes, 3D map setup help.
+Not done yet: flat redesigned icons, a Benz-style theme, navigation as an overlay, the extended-frame fixes, 3D map setup help.
 
 ## 1.5 (compared with 1.4)
 

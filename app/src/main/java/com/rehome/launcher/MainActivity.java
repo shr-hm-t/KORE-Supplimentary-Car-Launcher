@@ -305,6 +305,7 @@ public class MainActivity extends Activity {
         if (uiReady || isFinishing() || isDestroyed() || lockedBoot) return;
         buildUi();
         uiReady = true;
+        FloatingService.uiAllowed = true;
         requestPerms();
         if (pendingResume && activityResumed) resumeWork();
         pendingResume = false;
@@ -322,6 +323,14 @@ public class MainActivity extends Activity {
     private void bootTasks() {
         if (!bootHandled) {
             bootHandled = true;
+            if (cfg.getInt("coverMode", 2) >= 1 && (Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(this))) {
+                try {
+                    Intent cs = new Intent(this, FloatingService.class);
+                    cs.putExtra("bootCover", true);
+                    startService(cs);
+                } catch (Exception ignored) {
+                }
+            }
             final int secs = cfg.getInt("autoRadio", 1);
             if (secs > 0 && cfg.getString("pkgRadio", "").length() > 0) {
                 handler.postDelayed(new Runnable() {
@@ -380,7 +389,49 @@ public class MainActivity extends Activity {
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
         lastTouchAny = System.currentTimeMillis();
+        int act = ev.getActionMasked();
+        if (ev.getPointerCount() >= 4 && (act == MotionEvent.ACTION_POINTER_DOWN || act == MotionEvent.ACTION_MOVE)) {
+            if (!fourDown) {
+                fourDown = true;
+                handler.postDelayed(fourHold, 5000);
+            }
+        } else if (fourDown && (ev.getPointerCount() < 4 || act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_CANCEL
+                || act == MotionEvent.ACTION_POINTER_UP)) {
+            fourDown = false;
+            handler.removeCallbacks(fourHold);
+        }
         return super.dispatchTouchEvent(ev);
+    }
+
+    private boolean fourDown = false;
+    private final Runnable fourHold = new Runnable() {
+        @Override
+        public void run() {
+            fourDown = false;
+            emergencyMenu();
+        }
+    };
+
+    /** Hold four fingers on the launcher for five seconds: open the settings or reset everything. */
+    private void emergencyMenu() {
+        LinearLayout l = column();
+        label(l, "Emergency menu. If something went wrong with the settings you can open them or put everything back to the defaults.");
+        new Panel("Rehome emergency menu", l, false)
+                .button("Cancel", null)
+                .button("Reset all settings", new Runnable() {
+                    @Override
+                    public void run() {
+                        cfg.edit().clear().apply();
+                        stopService(new Intent(MainActivity.this, FloatingService.class));
+                        recreate();
+                    }
+                })
+                .button("Open settings", new Runnable() {
+                    @Override
+                    public void run() {
+                        editSettings();
+                    }
+                }).show();
     }
 
     @Override
@@ -555,7 +606,7 @@ public class MainActivity extends Activity {
         cMenuBot = ThemeFile.col(menu, "bgBottom", 0xFF0A0E12);
         cMenuStroke = ThemeFile.col(menu, "stroke", 0xFF5A6068);
         vigStrength = Math.max(0, Math.min(200, cfg.getInt("vignette", themeJ.optInt("vignette", 200))));
-        vigShape = Math.max(0, Math.min(2, cfg.getInt("vigShape", 0)));
+        vigShape = Math.max(0, Math.min(3, cfg.getInt("vigShape", 0)));
         vigSpread = Math.max(50, Math.min(150, cfg.getInt("vigSpread", 100)));
         ytVig = Math.max(0, Math.min(200, cfg.getInt("ytVignette", 120)));
         int vs = cfg.getInt("vigStyle", 0);   // 0 = follow the appearance, 1 = surround, 2 = fade
@@ -1172,47 +1223,43 @@ public class MainActivity extends Activity {
             p.setShader(null);
             return;
         }
-        float inner = Math.max(0.12f, Math.min(0.85f, 0.42f * vigSpread / 100f));
-        float s = 0.58f - 0.16f * extra;
-        if (vigShape == 2) {
-            // rounded rectangle: four soft edges, corners are darker where they overlap
-            float d = Math.min(w, h) * (0.55f - 0.18f * extra) * (100f / vigSpread);
-            p.setShader(new LinearGradient(0, 0, d, 0, softColors(clear, a), SOFT_POS, Shader.TileMode.CLAMP));
-            c.drawRect(0, 0, d, h, p);
-            p.setShader(new LinearGradient(w, 0, w - d, 0, softColors(clear, a), SOFT_POS, Shader.TileMode.CLAMP));
-            c.drawRect(w - d, 0, w, h, p);
-            p.setShader(new LinearGradient(0, 0, 0, d, softColors(clear, a), SOFT_POS, Shader.TileMode.CLAMP));
-            c.drawRect(0, 0, w, d, p);
-            p.setShader(new LinearGradient(0, h, 0, h - d, softColors(clear, a), SOFT_POS, Shader.TileMode.CLAMP));
-            c.drawRect(0, h - d, w, h, p);
-            p.setShader(null);
-            return;
+        Bitmap vb = vigBitmap(w, h, a, clear, extra);
+        p.setFilterBitmap(true);
+        c.drawBitmap(vb, null, new RectF(0, 0, w, h), p);
+    }
+
+    private Bitmap vigBmp;
+    private String vigKey = "";
+
+    /** Low-resolution darkness map for the surround vignette, stretched smoothly over the screen. */
+    private Bitmap vigBitmap(float w, float h, int a, int clear, float extra) {
+        String key = (int) w + "x" + (int) h + ":" + a + ":" + vigShape + ":" + vigSpread + ":" + clear + ":" + extra;
+        if (vigBmp != null && key.equals(vigKey)) return vigBmp;
+        int bw = 160, bh = Math.max(24, Math.round(bw * h / Math.max(1f, w)));
+        int[] px = new int[bw * bh];
+        float inner = 0.49f * vigSpread / 100f;
+        float outer = Math.max(inner + 0.1f, 1.16f - 0.32f * extra);
+        double pw = vigShape == 3 ? 0.7 : (vigShape == 2 ? 4.0 : 2.0);
+        float rad = Math.max(w, h) / 2f;
+        for (int y = 0; y < bh; y++) {
+            float ny = (y + 0.5f) / bh * 2f - 1f;
+            for (int x = 0; x < bw; x++) {
+                float nx = (x + 0.5f) / bw * 2f - 1f;
+                float d;
+                if (vigShape == 1) {
+                    float dx = nx * w / 2f / rad, dy = ny * h / 2f / rad;
+                    d = (float) Math.sqrt(dx * dx + dy * dy);
+                } else {
+                    d = (float) Math.pow(Math.pow(Math.abs(nx), pw) + Math.pow(Math.abs(ny), pw), 1.0 / pw);
+                }
+                float t = Math.max(0f, Math.min(1f, (d - inner) / (outer - inner)));
+                t = t * t * (3f - 2f * t);
+                px[y * bw + x] = (Math.round(a * t) << 24) | clear;
+            }
         }
-        int[] cols = softColors(clear, a);
-        float[] pos = new float[SOFT_POS.length];
-        for (int i = 0; i < pos.length; i++) pos[i] = inner + (1f - inner) * SOFT_POS[i];
-        // pos[0] = inner: everything inside is clear
-        int[] cl2 = new int[cols.length + 1];
-        float[] ps2 = new float[pos.length + 1];
-        cl2[0] = clear;
-        ps2[0] = 0f;
-        for (int i = 0; i < cols.length; i++) {
-            cl2[i + 1] = cols[i];
-            ps2[i + 1] = Math.max(pos[i], 0.001f * (i + 1));
-        }
-        RadialGradient g = new RadialGradient(0f, 0f, 1f, cl2, ps2, Shader.TileMode.CLAMP);
-        Matrix mx = new Matrix();
-        if (vigShape == 1) {
-            float r = Math.max(w, h) * (s + 0.05f);        // a true circle
-            mx.setScale(r, r);
-        } else {
-            mx.setScale(w * s, h * s);                      // oval fitted to the screen
-        }
-        mx.postTranslate(w / 2f, h / 2f);
-        g.setLocalMatrix(mx);
-        p.setShader(g);
-        c.drawRect(0, 0, w, h, p);
-        p.setShader(null);
+        vigBmp = Bitmap.createBitmap(px, bw, bh, Bitmap.Config.ARGB_8888);
+        vigKey = key;
+        return vigBmp;
     }
 
     private class Backdrop extends View {
@@ -1349,7 +1396,7 @@ public class MainActivity extends Activity {
         if (logoPath.length() > 0 && new File(logoPath).exists()) {
             Bitmap lb = BitmapFactory.decodeFile(logoPath);
             if (lb != null) {
-                ImageView logo = new ImageView(this);
+                ImageView logo = cfg.getBoolean("logoSparkle", true) ? new SparkleLogo(this) : new ImageView(this);
                 logo.setImageBitmap(lb);
                 logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
                 logo.setAlpha(0.9f);
@@ -1505,6 +1552,42 @@ public class MainActivity extends Activity {
         cover.setBackgroundColor(Color.BLACK);
         rootFrame.addView(cover, new FrameLayout.LayoutParams(-1, -1));
         setContentView(rootFrame);
+    }
+
+    /** The logo with a few soft four-point sparkles that twinkle on and off. */
+    private class SparkleLogo extends ImageView {
+        private final Paint sp = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final float[] fx = {0.18f, 0.80f, 0.52f, 0.30f, 0.72f, 0.90f};
+        private final float[] fy = {0.30f, 0.22f, 0.12f, 0.78f, 0.66f, 0.50f};
+        private final float[] ph = {0f, 1.1f, 2.3f, 3.4f, 4.4f, 5.5f};
+
+        SparkleLogo(Context c) {
+            super(c);
+            sp.setStyle(Paint.Style.FILL);
+        }
+
+        @Override
+        protected void onDraw(Canvas c) {
+            super.onDraw(c);
+            float w = getWidth(), h = getHeight();
+            double t = System.currentTimeMillis() / 1000.0;
+            for (int i = 0; i < fx.length; i++) {
+                float k = (float) Math.max(0, Math.sin(t * 1.3 + ph[i]));
+                k = k * k * k;
+                if (k < 0.03f) continue;
+                float r = Math.min(w, h) * 0.11f * k;
+                float x = fx[i] * w, y = fy[i] * h;
+                sp.setColor(((int) (210 * k) << 24) | 0xFFFFFF);
+                Path st = new Path();
+                st.moveTo(x, y - r);
+                st.quadTo(x, y, x + r, y);
+                st.quadTo(x, y, x, y + r);
+                st.quadTo(x, y, x - r, y);
+                st.quadTo(x, y, x, y - r);
+                c.drawPath(st, sp);
+            }
+            postInvalidateOnAnimation();
+        }
     }
 
     private View cover;
@@ -3239,7 +3322,7 @@ public class MainActivity extends Activity {
         final RadioGroup vigG = radios(l, new String[]{"Automatic: surround when always dark, soft bottom fade otherwise",
                 "Surround (dark all around the edge)", "Fade (soft darkening at the bottom and top)"}, 4000, cfg.getInt("vigStyle", 0));
         label(l, "Surround shape");
-        final RadioGroup shapeG = radios(l, new String[]{"Oval, fitted to the screen", "Circle", "Rounded rectangle"}, 4100, vigShape);
+        final RadioGroup shapeG = radios(l, new String[]{"Oval, fitted to the screen", "Circle", "Rounded rectangle", "Star: the four edges curve inward, corners darkest"}, 4100, vigShape);
         final EditText spread = numField(l, "Vignette spread in percent (50 = reaches far in, 150 = only the edge)", vigSpread);
         final EditText ytV = numField(l, "Vignette strength over the YouTube widget (0 = off)", ytVig);
         final EditText tileRad = numField(l, "Bar corner roundness in dp (the rounded contacts bar; 0 = sharp)", tileRadius);
@@ -3262,6 +3345,7 @@ public class MainActivity extends Activity {
         });
         addFull(l, logoOff);
         final EditText logoSize = numField(l, "Logo size in dp (default 160)", cfg.getInt("logoSize", 160));
+        final CheckBox logoSparkle = check(l, "Soft sparkle on the logo", cfg.getBoolean("logoSparkle", true));
         label(l, "Theme file: colours, icons, menus and layout in one file. Export a template to edit it or give it to a designer, then import it.");
         Button expT = flat("Export theme template");
         expT.setOnClickListener(new View.OnClickListener() {
@@ -3419,8 +3503,10 @@ public class MainActivity extends Activity {
         final CheckBox a360video = check(l, "Also wait while a video is playing", cfg.getBoolean("auto360PauseVideo", false));
         final EditText retry = numField(l, "Start 360 this many seconds after boot if it is not showing (0 = off)", cfg.getInt("boot360Retry", 5));
         final EditText auto = numField(l, "Open radio this many seconds after boot (0 = off)", cfg.getInt("autoRadio", 1));
-        final CheckBox coverOn = check(l, "Cover the screen with black while the 360 app starts, then fade it out (hides its start-up screens; needs display over other apps)", cfg.getBoolean("coverOn", true));
-        final EditText coverMs = numField(l, "Cover time in seconds (1 to 15)", cfg.getInt("coverSec", 4));
+        label(l, "Start-up cover: a soft glowing screen (needs display over other apps) that hides the unit's ugly start-up screens and fades away.");
+        final RadioGroup coverG = radios(l, new String[]{"Off", "At start-up only", "At start-up and every time the 360 app is opened from Rehome"}, 4200, cfg.getInt("coverMode", 2));
+        final EditText coverBoot = numField(l, "Start-up cover time in seconds (1 to 30)", cfg.getInt("coverBootSec", 10));
+        final EditText coverMs = numField(l, "Cover time when the 360 app is opened, in seconds (1 to 15)", cfg.getInt("coverSec", 4));
 
         l = newSec(secNames, secViews, "Floating buttons");
         final CheckBox floating = check(l, "Show the floating Home button (only in the 360 app, and not while the extended frame is on)", cfg.getBoolean("floating", true));
@@ -3520,13 +3606,15 @@ public class MainActivity extends Activity {
                                 .putBoolean("floatLock", lock.isChecked())
                                 .putInt("floatSize", Math.max(48, Math.min(160, intOf(fsize, 84))))
                                 .putInt("floatColor", checkedIdx(colG, 6000, 4, 0))
-                                .putBoolean("coverOn", coverOn.isChecked())
+                                .putInt("coverMode", checkedIdx(coverG, 4200, 3, 2))
+                                .putInt("coverBootSec", Math.max(1, Math.min(30, intOf(coverBoot, 10))))
+                                .putBoolean("logoSparkle", logoSparkle.isChecked())
                                 .putInt("coverSec", Math.max(1, Math.min(15, intOf(coverMs, 4))))
                                 .putBoolean("statusFrame", statusFrame.isChecked())
                                 .putInt("statusH", Math.max(24, Math.min(120, intOf(statusH, 44))))
                                 .putBoolean("statusHome", statusHome.isChecked())
                                 .putInt("vigStyle", checkedIdx(vigG, 4000, 3, 0))
-                                .putInt("vigShape", checkedIdx(shapeG, 4100, 3, 0))
+                                .putInt("vigShape", checkedIdx(shapeG, 4100, 4, 0))
                                 .putInt("vigSpread", Math.max(50, Math.min(150, intOf(spread, 100))))
                                 .putInt("ytVignette", Math.max(0, Math.min(200, intOf(ytV, 120))))
                                 .putInt("mapEngine", checkedIdx(engG, 5100, 2, 0))
