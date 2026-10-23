@@ -119,7 +119,8 @@ public class MainActivity extends Activity {
     private int cRing = 0xFFE2E8EC, cRingFill = 0xFF15171A;
     private int cAccent = 0xFFFF8A1E, cTileFill = 0x59000000, cTileStroke = 0x66FFFFFF, cVig = 0xFF000000;
     private int cMenuTop = 0xFF212B35, cMenuBot = 0xFF0A0E12, cMenuStroke = 0xFF5A6068;
-    private int tileRadius = 30, vigStrength = 50, tileGap = 6, iconGlow = 45;
+    private int tileRadius = 60, vigStrength = 200, tileGap = 6, iconGlow = 0;
+    private int vigStyle = 1, vigShape = 0, vigSpread = 100, ytVig = 120;
     private org.json.JSONObject mapPal;
     private FrameLayout leftPanel;
     private double mslAlt = Double.NaN;
@@ -144,7 +145,7 @@ public class MainActivity extends Activity {
     private boolean showGuides = false;
 
     private ImageView navArrow;
-    private TextView navTitle, navText, cityText, subText, hintText;
+    private TextView navTitle, navText, navSub, cityText, subText, hintText;
     private LinearLayout infoPanel;
     private SpeedGlow lightGlow;
     private View lightLine;
@@ -172,6 +173,14 @@ public class MainActivity extends Activity {
                 .remove("orient").putBoolean("migrated11", true).apply();
     }
 
+    /** One-time clean-up for 1.6: new defaults for size, vignette, logo, dock order and the floating button. */
+    private void migrate16() {
+        if (cfg.getBoolean("migrated16", false)) return;
+        cfg.edit().remove("vignette").remove("tileRadius").remove("uiScale").remove("logoSize")
+                .remove("dockItems").remove("floatBtns").remove("floatIn").remove("mapStyle").remove("iconGlow")
+                .remove("floatX").remove("floatY").putBoolean("migrated16", true).apply();
+    }
+
     private boolean mirror() {
         return cfg.getInt("seat", 0) == 1;
     }
@@ -182,11 +191,11 @@ public class MainActivity extends Activity {
     }
 
     private float shieldH() {
-        return Math.max(8, Math.min(30, cfg.getInt("shieldH", 15)));
+        return Math.max(8, Math.min(30, cfg.getInt("shieldH", 18)));
     }
 
     private boolean pipOn() {
-        return cfg.getBoolean("pipOn", true);
+        return cfg.getBoolean("pipOn", false);
     }
 
     /** With the 360 window on, the map / YouTube area keeps clear of it so none of its buttons are covered. */
@@ -250,9 +259,11 @@ public class MainActivity extends Activity {
             }
         }
         cfg = getSharedPreferences("cfg", MODE_PRIVATE);
-        scale = Math.max(0.6f, Math.min(1.6f, cfg.getInt("uiScale", 130) / 100f));
+        if (b == null && fromAppList(getIntent())) openSettingsPending = true;
+        scale = Math.max(0.6f, Math.min(1.6f, cfg.getInt("uiScale", 100) / 100f));
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         migrateSettings();
+        migrate16();
         night = computeNight();
         initTheme();
         // First frame: just the background, so Android sees the launcher straight away.
@@ -297,6 +308,15 @@ public class MainActivity extends Activity {
         requestPerms();
         if (pendingResume && activityResumed) resumeWork();
         pendingResume = false;
+        if (openSettingsPending) {
+            openSettingsPending = false;
+            handler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    editSettings();
+                }
+            }, 500);
+        }
     }
 
     private void bootTasks() {
@@ -332,10 +352,29 @@ public class MainActivity extends Activity {
         }
     }
 
+    private boolean openSettingsPending = false;
+
+    /** Opened from the app list (not by the Home button): the emergency way into the settings. */
+    private static boolean fromAppList(Intent i) {
+        return i != null && i.hasCategory(Intent.CATEGORY_LAUNCHER) && !i.hasCategory(Intent.CATEGORY_HOME);
+    }
+
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        if (fromAppList(intent)) {
+            if (uiReady) {
+                handler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        editSettings();
+                    }
+                }, 400);
+            } else {
+                openSettingsPending = true;
+            }
+        }
     }
 
     @Override
@@ -515,10 +554,15 @@ public class MainActivity extends Activity {
         cMenuTop = ThemeFile.col(menu, "bgTop", 0xFF212B35);
         cMenuBot = ThemeFile.col(menu, "bgBottom", 0xFF0A0E12);
         cMenuStroke = ThemeFile.col(menu, "stroke", 0xFF5A6068);
-        vigStrength = Math.max(0, Math.min(200, cfg.getInt("vignette", themeJ.optInt("vignette", 50))));
-        tileRadius = Math.max(0, cfg.getInt("tileRadius", themeJ.optInt("tileRadius", 30)));
+        vigStrength = Math.max(0, Math.min(200, cfg.getInt("vignette", themeJ.optInt("vignette", 200))));
+        vigShape = Math.max(0, Math.min(2, cfg.getInt("vigShape", 0)));
+        vigSpread = Math.max(50, Math.min(150, cfg.getInt("vigSpread", 100)));
+        ytVig = Math.max(0, Math.min(200, cfg.getInt("ytVignette", 120)));
+        int vs = cfg.getInt("vigStyle", 0);   // 0 = follow the appearance, 1 = surround, 2 = fade
+        vigStyle = vs == 0 ? (cfg.getInt("theme", 2) == 2 ? 1 : 2) : vs;
+        tileRadius = Math.max(0, cfg.getInt("tileRadius", themeJ.optInt("tileRadius", 60)));
         tileGap = Math.max(0, Math.min(30, cfg.getInt("tileGap", themeJ.optInt("tileGap", 0))));
-        iconGlow = Math.max(0, Math.min(100, cfg.getInt("iconGlow", themeJ.optInt("iconGlow", 45))));
+        iconGlow = 0;
         mapPal = pal == null ? null : pal.optJSONObject("map");
         IconPack.clearOverrides();
         org.json.JSONObject icons = themeJ.optJSONObject("icons");
@@ -1026,8 +1070,7 @@ public class MainActivity extends Activity {
         protected void onDraw(Canvas c) {
             float w = getWidth(), h = getHeight();
             float cy = h / 2f;
-            RectF box = new RectF(w * 0.07f, h * 0.12f, w * 0.93f, h * 0.88f);
-            drawGlass(c, box, kind == 0 ? iconColor("camera", BLUE) : (primary ? iconColor("contactPrimary", RED) : iconColor("contact", BLUE)), box.height() / 2f);
+            int tint = primary ? 0xFFFF5A68 : WHITE;
             p.setTypeface(Typeface.DEFAULT_BOLD);
             p.setStyle(Paint.Style.FILL);
             if (kind == 0) {
@@ -1039,12 +1082,12 @@ public class MainActivity extends Activity {
             }
             float size = Math.min(h * 0.46f, w * 0.26f);
             p.setTextAlign(Paint.Align.LEFT);
-            p.setColor(WHITE);
+            p.setColor(tint);
             p.setTextSize(size * 1.05f);
             float tw = p.measureText(label);
             float gap = size * 0.22f;
             float x0 = (w - (size + gap + tw)) / 2f;
-            ic.setColor(WHITE);
+            ic.setColor(tint);
             c.save();
             c.translate(x0, cy - size / 2f);
             c.scale(size / 100f, size / 100f);
@@ -1102,19 +1145,71 @@ public class MainActivity extends Activity {
 
     // ---- soft coloured background with vignette (the look of the unit's own radio screen)
 
-    private static void drawVignette(Canvas c, Paint p, float w, float h, int strength, int color) {
+    private static int[] softColors(int clear, int a) {
+        // eased ramp so the dark edge fades in without a visible line
+        float[] k = {0f, 0.04f, 0.15f, 0.33f, 0.56f, 0.8f, 1f};
+        int[] out = new int[k.length];
+        for (int i = 0; i < k.length; i++) out[i] = (Math.round(a * k[i]) << 24) | clear;
+        return out;
+    }
+
+    private static final float[] SOFT_POS = {0f, 0.2f, 0.4f, 0.58f, 0.74f, 0.88f, 1f};
+
+    private void drawVignette(Canvas c, Paint p, float w, float h, int strength, int color) {
         if (strength <= 0) return;
         int a = (int) (Math.min(100, strength) / 100f * 0.95f * 255f);
         int clear = color & 0x00FFFFFF;
-        int edge = (a << 24) | clear;
-        RadialGradient g = new RadialGradient(0f, 0f, 1f, new int[]{clear, clear, edge},
-                new float[]{0f, 0.42f, 1f}, Shader.TileMode.CLAMP);
-        Matrix m = new Matrix();
         float extra = Math.max(0, Math.min(200, strength) - 100) / 100f;   // above 100 the dark edge reaches further in
-        m.setScale(w * (0.58f - 0.16f * extra), h * (0.58f - 0.16f * extra));
-        m.postTranslate(w / 2f, h / 2f);
-        g.setLocalMatrix(m);
         p.setStyle(Paint.Style.FILL);
+        if (vigStyle == 2) {
+            // fade: only a soft darkening along the bottom (and a little at the top)
+            float fb = h * (0.38f + 0.22f * extra) * (100f / vigSpread);
+            float ft = h * (0.16f + 0.10f * extra) * (100f / vigSpread);
+            p.setShader(new LinearGradient(0, h, 0, h - fb, softColors(clear, a), SOFT_POS, Shader.TileMode.CLAMP));
+            c.drawRect(0, h - fb, w, h, p);
+            p.setShader(new LinearGradient(0, 0, 0, ft, softColors(clear, (int) (a * 0.7f)), SOFT_POS, Shader.TileMode.CLAMP));
+            c.drawRect(0, 0, w, ft, p);
+            p.setShader(null);
+            return;
+        }
+        float inner = Math.max(0.12f, Math.min(0.85f, 0.42f * vigSpread / 100f));
+        float s = 0.58f - 0.16f * extra;
+        if (vigShape == 2) {
+            // rounded rectangle: four soft edges, corners are darker where they overlap
+            float d = Math.min(w, h) * (0.55f - 0.18f * extra) * (100f / vigSpread);
+            p.setShader(new LinearGradient(0, 0, d, 0, softColors(clear, a), SOFT_POS, Shader.TileMode.CLAMP));
+            c.drawRect(0, 0, d, h, p);
+            p.setShader(new LinearGradient(w, 0, w - d, 0, softColors(clear, a), SOFT_POS, Shader.TileMode.CLAMP));
+            c.drawRect(w - d, 0, w, h, p);
+            p.setShader(new LinearGradient(0, 0, 0, d, softColors(clear, a), SOFT_POS, Shader.TileMode.CLAMP));
+            c.drawRect(0, 0, w, d, p);
+            p.setShader(new LinearGradient(0, h, 0, h - d, softColors(clear, a), SOFT_POS, Shader.TileMode.CLAMP));
+            c.drawRect(0, h - d, w, h, p);
+            p.setShader(null);
+            return;
+        }
+        int[] cols = softColors(clear, a);
+        float[] pos = new float[SOFT_POS.length];
+        for (int i = 0; i < pos.length; i++) pos[i] = inner + (1f - inner) * SOFT_POS[i];
+        // pos[0] = inner: everything inside is clear
+        int[] cl2 = new int[cols.length + 1];
+        float[] ps2 = new float[pos.length + 1];
+        cl2[0] = clear;
+        ps2[0] = 0f;
+        for (int i = 0; i < cols.length; i++) {
+            cl2[i + 1] = cols[i];
+            ps2[i + 1] = Math.max(pos[i], 0.001f * (i + 1));
+        }
+        RadialGradient g = new RadialGradient(0f, 0f, 1f, cl2, ps2, Shader.TileMode.CLAMP);
+        Matrix mx = new Matrix();
+        if (vigShape == 1) {
+            float r = Math.max(w, h) * (s + 0.05f);        // a true circle
+            mx.setScale(r, r);
+        } else {
+            mx.setScale(w * s, h * s);                      // oval fitted to the screen
+        }
+        mx.postTranslate(w / 2f, h / 2f);
+        g.setLocalMatrix(mx);
         p.setShader(g);
         c.drawRect(0, 0, w, h, p);
         p.setShader(null);
@@ -1148,13 +1243,16 @@ public class MainActivity extends Activity {
     private class VignetteView extends View {
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
 
-        VignetteView(Context c) {
+        private final int strength;
+
+        VignetteView(Context c, int strength) {
             super(c);
+            this.strength = strength;
         }
 
         @Override
         protected void onDraw(Canvas c) {
-            drawVignette(c, p, getWidth(), getHeight(), vigStrength, cVig);
+            drawVignette(c, p, getWidth(), getHeight(), strength, cVig);
         }
     }
 
@@ -1188,7 +1286,7 @@ public class MainActivity extends Activity {
             }
         });
 
-        if (vigStrength > 0) top.addView(new VignetteView(this), new FrameLayout.LayoutParams(-1, -1));
+        if (vigStrength > 0) top.addView(new VignetteView(this, vigStrength), new FrameLayout.LayoutParams(-1, -1));
         buildYtPane(top);
 
         // speed light from the top edge (yellow from 80 km/h, red from 120 km/h)
@@ -1206,17 +1304,27 @@ public class MainActivity extends Activity {
         infoPanel.setPadding(dp(12), dp(14), dp(18), clearBottom);
         navBox = infoBox();
         navArrow = new ImageView(this);
-        navBox.addView(navArrow, new LinearLayout.LayoutParams(dp(120), dp(120)));
+        navBox.addView(navArrow, new LinearLayout.LayoutParams(dp(120), dp(120), Gravity.END));
         navTitle = text(34, WHITE, true);
         navText = text(22, 0xFFD5DADF, false);
+        navSub = text(18, 0xFFB8C0C8, false);
+        for (TextView t : new TextView[]{navTitle, navText, navSub}) {
+            t.setGravity(Gravity.END);
+            t.setShadowLayer(8, 0, 1, 0xFF000000);
+        }
         navBox.addView(navTitle);
         navBox.addView(navText);
+        navBox.addView(navSub);
         infoPanel.addView(navBox, boxLp());
         View spacer = new View(this);
         infoPanel.addView(spacer, new LinearLayout.LayoutParams(1, 0, 1f));
         cityBox = infoBox();
         cityText = text(32, WHITE, true);
         subText = text(18, 0xFFD5DADF, false);
+        cityText.setGravity(Gravity.END);
+        subText.setGravity(Gravity.END);
+        cityText.setShadowLayer(8, 0, 1, 0xFF000000);
+        subText.setShadowLayer(8, 0, 1, 0xFF000000);
         cityBox.addView(cityText);
         cityBox.addView(subText);
         infoPanel.addView(cityBox, boxLp());
@@ -1245,9 +1353,12 @@ public class MainActivity extends Activity {
                 logo.setImageBitmap(lb);
                 logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
                 logo.setAlpha(0.9f);
-                int ls = dp(Math.max(24, Math.min(160, cfg.getInt("logoSize", 56))));
-                FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(ls, ls, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+                int ls = dp(Math.max(24, Math.min(240, cfg.getInt("logoSize", 160))));
+                FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(ls, ls, Gravity.TOP | (mirror() ? Gravity.END : Gravity.START));
                 llp.topMargin = dp(12);
+                llp.leftMargin = dp(16);
+                llp.rightMargin = dp(16);
+                logo.setOnLongClickListener(settingsLongClick());
                 top.addView(logo, llp);
             }
         }
@@ -1349,6 +1460,13 @@ public class MainActivity extends Activity {
         pill.setStroke(Math.max(1, rdp(1)), cTileStroke);
         pill.setCornerRadius(rdp(tileRadius));
         bar.setBackground(pill);
+        GradientDrawable sep = new GradientDrawable();
+        sep.setColor(0x66FFFFFF);
+        sep.setSize(Math.max(1, rdp(1)), 1);
+        bar.setDividerDrawable(sep);
+        bar.setShowDividers(LinearLayout.SHOW_DIVIDER_MIDDLE);
+        bar.setDividerPadding(rdp(14));
+        bar.setOnLongClickListener(settingsLongClick());
         // keep the bar inside the frame's margin and rounded corners
         int fm = cfg.getBoolean("frame", true) ? rdp(cfg.getInt("margin", 8)) : 0;
         FrameLayout.LayoutParams pillLp = new FrameLayout.LayoutParams(-1, -1);
@@ -1365,17 +1483,15 @@ public class MainActivity extends Activity {
         clock.setTypeface(Typeface.DEFAULT_BOLD);
         clock.setGravity(Gravity.CENTER);
         clock.setBackgroundColor(Color.BLACK);
+        clock.setOnLongClickListener(settingsLongClick());
         clock.setVisibility(pipOn() ? View.VISIBLE : View.GONE);
         body.addView(clock);                     // child 3
 
         LinearLayout dockIcons = new LinearLayout(this);
         dockIcons.setOrientation(LinearLayout.HORIZONTAL);
         dockIcons.setBackgroundColor(Color.BLACK);   // plain black bar, square corners
-        String sel = "," + cfg.getString("dockItems", DOCK_DEFAULT) + ",";
-        for (int k = 0; k < DOCK_IDS.length; k++) {
-            if (sel.contains("," + DOCK_IDS[k] + ",")) {
-                dockIcons.addView(dockItem(DOCK_IDS[k]), new LinearLayout.LayoutParams(0, -1, 1f));
-            }
+        for (String did : dockOrder()) {
+            dockIcons.addView(dockItem(did), new LinearLayout.LayoutParams(0, -1, 1f));
         }
         if (mirror()) dockIcons.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         dockIcons.setVisibility(pipOn() ? View.VISIBLE : View.GONE);
@@ -1442,10 +1558,20 @@ public class MainActivity extends Activity {
         return lp;
     }
 
-    private static final String[] DOCK_IDS = {"radio", "mapyt", "nav", "music", "phone", "car", "theme", "apps", "settings"};
-    private static final String[] DOCK_NAMES = {"Radio", "Map / YouTube switch", "Navigation (opens the navigation app)",
-            "Music app", "Phone dialer", "Car or vehicle app", "Day / night button", "All apps", "Settings"};
-    private static final String DOCK_DEFAULT = "radio,mapyt,nav,music,theme,apps,settings";
+    private static final String[] DOCK_IDS = {"radio", "mapyt", "nav", "web", "music", "phone", "car", "theme", "apps", "settings"};
+    private static final String[] DOCK_NAMES = {"Radio", "Map / YouTube switch", "Open the navigation app",
+            "Open YouTube in the browser", "Music app", "Phone dialer", "Car or vehicle app", "Day / night button", "All apps", "Settings"};
+    private static final String DOCK_DEFAULT = "radio,mapyt,nav,web,music,phone,car,theme,apps,settings";
+
+    /** The dock order the user chose; items missing from the saved list are added at the end. */
+    private ArrayList<String> dockOrder() {
+        ArrayList<String> out = new ArrayList<String>();
+        for (String s : cfg.getString("dockItems", DOCK_DEFAULT).split(",")) {
+            for (String id : DOCK_IDS) if (id.equals(s) && !out.contains(id)) out.add(id);
+        }
+        for (String id : DOCK_IDS) if (!out.contains(id)) out.add(id);
+        return out;
+    }
 
     private FrameLayout dockItem(String id) {
         if (id.equals("radio")) {
@@ -1462,6 +1588,13 @@ public class MainActivity extends Activity {
                 @Override
                 public void onClick(View v) {
                     openNav();
+                }
+            }, null);
+        } else if (id.equals("web")) {
+            return dockCell(Glyph.YT, "web", new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    openYoutube();
                 }
             }, null);
         } else if (id.equals("music")) {
@@ -1526,20 +1659,20 @@ public class MainActivity extends Activity {
         g.setColor(ic);
         f.addView(g, new FrameLayout.LayoutParams(-1, -1));
         f.setOnClickListener(click);
-        if (lc != null) f.setOnLongClickListener(lc);
+        f.setOnLongClickListener(lc != null ? lc : settingsLongClick());
         return f;
     }
 
     /** A bar icon on a glass disc (glyph is child 1 so callers can reach it). */
     private FrameLayout barIcon(int glyphType, String id, View.OnClickListener click, View.OnLongClickListener lc) {
         FrameLayout f = cell();
-        f.addView(new GlassDisc(this, iconColor(id, BLUE)), new FrameLayout.LayoutParams(-1, -1));
+        f.addView(new View(this), new FrameLayout.LayoutParams(-1, -1));   // keeps the glyph at child 1
         Glyph g = new Glyph(this, glyphType);
-        g.setFrac(0.46f);
-        g.setColor(0xFFF2F5F8);
+        g.setFrac(0.50f);
+        g.setColor(iconColor(id, 0xFFF2F5F8));
         f.addView(g, new FrameLayout.LayoutParams(-1, -1));
         f.setOnClickListener(click);
-        if (lc != null) f.setOnLongClickListener(lc);
+        f.setOnLongClickListener(lc != null ? lc : settingsLongClick());   // hold = settings (emergency way in)
         return f;
     }
 
@@ -1548,7 +1681,8 @@ public class MainActivity extends Activity {
         View.OnClickListener click = new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                switchClick();
+                if (pipOn()) toggleYt();   // 360 window layout: tap switches, the two open buttons are separate dock icons
+                else switchClick();
             }
         };
         View.OnLongClickListener hold = new View.OnLongClickListener() {
@@ -1633,8 +1767,8 @@ public class MainActivity extends Activity {
     private LinearLayout infoBox() {
         LinearLayout b = new LinearLayout(this);
         b.setOrientation(LinearLayout.VERTICAL);
-        b.setPadding(dp(16), dp(12), dp(16), dp(12));
-        b.setBackground(glass(BLUE, false));
+        b.setGravity(Gravity.END);
+        b.setPadding(dp(6), dp(6), dp(6), dp(6));
         return b;
     }
 
@@ -1646,7 +1780,7 @@ public class MainActivity extends Activity {
     }
 
     private void updateBoxes() {
-        boolean nav = NavListener.icon != null || navTitle.getText().length() > 0 || navText.getText().length() > 0;
+        boolean nav = NavListener.icon != null || navTitle.getText().length() > 0 || navText.getText().length() > 0 || navSub.getText().length() > 0;
         navBox.setVisibility(nav ? View.VISIBLE : View.GONE);
         cityBox.setVisibility(cityText.getText().length() > 0 || subText.getText().length() > 0 ? View.VISIBLE : View.GONE);
     }
@@ -1656,6 +1790,8 @@ public class MainActivity extends Activity {
         CharSequence x = NavListener.text;
         navTitle.setText(t == null ? "" : t);
         navText.setText(x == null ? "" : x);
+        CharSequence sb = NavListener.sub;
+        navSub.setText(sb == null ? "" : sb);
         if (NavListener.icon != null) {
             navArrow.setImageBitmap(NavListener.icon);
             navArrow.setVisibility(View.VISIBLE);
@@ -1947,7 +2083,7 @@ public class MainActivity extends Activity {
         if (lastYtBmp != null) ytImage.setImageBitmap(lastYtBmp);
         ytShade.addView(ytTitle, new FrameLayout.LayoutParams(-1, dp(110), Gravity.BOTTOM));
         ytPane.addView(ytShade, new FrameLayout.LayoutParams(-1, -1));
-        if (vigStrength > 0) ytPane.addView(new VignetteView(this), new FrameLayout.LayoutParams(-1, -1));
+        if (ytVig > 0) ytPane.addView(new VignetteView(this, ytVig), new FrameLayout.LayoutParams(-1, -1));
 
         // play / pause button
         ytPlayBtn = new FrameLayout(this);
@@ -1967,7 +2103,9 @@ public class MainActivity extends Activity {
             }
         });
         FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(dp(92), dp(92), Gravity.BOTTOM | Gravity.END);
-        plp.bottomMargin = dp(40);
+        DisplayMetrics pdm = getResources().getDisplayMetrics();
+        plp.bottomMargin = Math.round(pdm.heightPixels * (barH() + (pipOn() ? dockH() : 0f)
+                + (extOn() ? shieldH() / 100f : 0f))) + dp(24);
         plp.rightMargin = dp(40);
         ytPane.addView(ytPlayBtn, plp);
         top.addView(ytPane, new FrameLayout.LayoutParams(-1, -1));
@@ -2112,6 +2250,7 @@ public class MainActivity extends Activity {
             return;
         }
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (pkg.equals(cfg.getString("pkg360", ""))) FloatingService.cover();
         startActivity(i);
     }
 
@@ -2287,12 +2426,60 @@ public class MainActivity extends Activity {
     }
 
     private void showDrawer() {
-        chooseApp("Apps", new Pick() {
+        final List<ResolveInfo> apps = launchableApps();
+        final PackageManager pm = getPackageManager();
+        android.widget.GridView gv = new android.widget.GridView(this);
+        gv.setNumColumns(6);
+        gv.setVerticalSpacing(rdp(14));
+        gv.setHorizontalSpacing(rdp(6));
+        gv.setPadding(rdp(12), rdp(14), rdp(12), rdp(6));
+        gv.setSelector(new android.graphics.drawable.ColorDrawable(0));
+        gv.setAdapter(new BaseAdapter() {
             @Override
-            public void onPick(String pkg, String label) {
-                launchPackage(pkg);
+            public int getCount() {
+                return apps.size();
+            }
+
+            @Override
+            public Object getItem(int p) {
+                return apps.get(p);
+            }
+
+            @Override
+            public long getItemId(int p) {
+                return p;
+            }
+
+            @Override
+            public View getView(int p, View v, ViewGroup parent) {
+                LinearLayout cell = new LinearLayout(MainActivity.this);
+                cell.setOrientation(LinearLayout.VERTICAL);
+                cell.setGravity(Gravity.CENTER_HORIZONTAL);
+                ImageView iv = new ImageView(MainActivity.this);
+                ResolveInfo ri = apps.get(p);
+                iv.setImageDrawable(ri.loadIcon(pm));
+                cell.addView(iv, new LinearLayout.LayoutParams(rdp(64), rdp(64)));
+                TextView tv = new TextView(MainActivity.this);
+                tv.setText(ri.loadLabel(pm));
+                tv.setTextColor(WHITE);
+                tv.setTextSize(13);
+                tv.setGravity(Gravity.CENTER);
+                tv.setMaxLines(2);
+                tv.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                tv.setPadding(0, rdp(5), 0, 0);
+                cell.addView(tv, new LinearLayout.LayoutParams(-1, -2));
+                return cell;
             }
         });
+        final Panel pn = new Panel("Apps", gv, false, true);
+        gv.setOnItemClickListener(new android.widget.AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(android.widget.AdapterView<?> a, View v, int which, long id) {
+                pn.d.dismiss();
+                launchPackage(apps.get(which).activityInfo.packageName);
+            }
+        });
+        pn.button("Close", null).show();
     }
 
     // ------------------------------------------------------------------ contacts / calls
@@ -2448,7 +2635,7 @@ public class MainActivity extends Activity {
         if (g == 1) {
             cfg.edit().putInt("guide", 2).apply();
             if (!isDefaultHome()) {
-                Toast.makeText(this, "Choose Rehome: for you as the home app and tap Always", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Choose Rehome: Scroll as the home app and tap Always", Toast.LENGTH_LONG).show();
                 try {
                     startActivity(new Intent(Settings.ACTION_HOME_SETTINGS));
                     return;
@@ -2531,9 +2718,11 @@ public class MainActivity extends Activity {
         final RadioGroup thG = radios(l, new String[]{"Dark (recommended)", "Automatic: dark at night, light by day"}, 7100, 0);
         label(l, "Where does the driver sit?");
         final RadioGroup seatG = radios(l, new String[]{"Right side", "Left side"}, 7200, 0);
-        final CheckBox pipChk = check(l, "My unit shows a small 360 camera window over the launcher", true);
-        label(l, "After that Android will ask you for a few switches (home app, display over other apps, notification access). "
-                + "Say yes to each. To open the settings later, hold the 360° button or tap the gear icon.");
+        final CheckBox pipChk = check(l, "My unit shows a small 360 camera window over the launcher", false);
+        label(l, "How the map / video widget works: the round button with a map pin or a video icon changes what the top area shows (the map, or what is playing in YouTube/Brave with play and pause). "
+                + "In the simple layout, tap opens Google Maps or the browser and hold switches. With the 360 window layout, tap switches and two other bottom-bar icons open Maps and YouTube.");
+        label(l, "After that Android will ask you for a few switches (home app, display over other apps, notification access). Say yes to each.");
+        label(l, "To open the settings later: hold the 360° button or the clock, tap the gear icon, hold any bar icon, or open Rehome from the app list.");
         Panel p = new Panel("Welcome to Rehome", l, true);
         p.d.setCancelable(false);
         p.d.setCanceledOnTouchOutside(false);
@@ -2751,25 +2940,19 @@ public class MainActivity extends Activity {
         final ScrollView tabScroll = new ScrollView(this);
         tabScroll.setBackgroundColor(0x66000000);
         tabScroll.addView(tabs);
-        final TextView up = new TextView(this);
-        up.setText("▲  more");
         final TextView down = new TextView(this);
-        down.setText("▼  more");
-        for (TextView hint : new TextView[]{up, down}) {
-            hint.setTextColor(WHITE);
-            hint.setTextSize(13);
-            hint.setGravity(Gravity.CENTER);
-            hint.setBackgroundColor(0xCC000000);
-            hint.setPadding(0, rdp(5), 0, rdp(5));
-        }
+        down.setText("▾");
+        down.setTextColor(WHITE);
+        down.setTextSize(22);
+        down.setGravity(Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM);
+        down.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x00000000, 0xEE000000}));
+        down.setPadding(0, rdp(22), 0, rdp(2));
         FrameLayout tabBox = new FrameLayout(this);
         tabBox.addView(tabScroll, new FrameLayout.LayoutParams(-1, -1));
-        tabBox.addView(up, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
         tabBox.addView(down, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
         final Runnable hints = new Runnable() {
             @Override
             public void run() {
-                up.setVisibility(tabScroll.canScrollVertically(-1) ? View.VISIBLE : View.GONE);
                 down.setVisibility(tabScroll.canScrollVertically(1) ? View.VISIBLE : View.GONE);
             }
         };
@@ -2998,9 +3181,10 @@ public class MainActivity extends Activity {
         final ArrayList<String> secNames = new ArrayList<String>();
         final ArrayList<LinearLayout> secViews = new ArrayList<LinearLayout>();
         LinearLayout l = null;
+        final boolean adv = cfg.getBoolean("advanced", false);
 
         l = newSec(secNames, secViews, "Guide");
-        label(l, "Opening settings: hold the 360° button, or tap the gear icon in the bottom bar. More tabs are listed on the left: scroll the list (arrows show when there are more).");
+        label(l, "Opening settings: hold the 360° button, the clock or any bar icon, tap the gear icon, or open Rehome from the app list (that always opens the settings). More tabs are listed on the left: scroll the list (an arrow shows when there are more).");
         label(l, "YouTube with the screen off or in the background: use the Brave browser and tap the video button (it opens YouTube in Brave).");
         linkButton(l, "Download Brave (official page)", "https://brave.com/download/");
         linkButton(l, "Brave on APKPure (for units without a store)", "https://apkpure.com/search?q=brave%20browser");
@@ -3030,7 +3214,7 @@ public class MainActivity extends Activity {
                 try {
                     startActivity(new Intent(Settings.ACTION_HOME_SETTINGS));
                 } catch (Exception e) {
-                    Toast.makeText(MainActivity.this, "Press the Home button and choose Rehome: for you, then Always", Toast.LENGTH_LONG).show();
+                    Toast.makeText(MainActivity.this, "Press the Home button and choose Rehome: Scroll, then Always", Toast.LENGTH_LONG).show();
                 }
             }
         });
@@ -3051,9 +3235,16 @@ public class MainActivity extends Activity {
         final EditText nightStart = numField(l, "Dark mode starts at hour (0-23)", cfg.getInt("nightStart", 18));
         label(l, "The sun/moon button in the bottom bar switches between your choice and always dark.");
         final EditText vignette = numField(l, "Vignette strength in percent (0 = off, 100 = strong, up to 200 for a very dark edge)", vigStrength);
+        label(l, "Vignette style");
+        final RadioGroup vigG = radios(l, new String[]{"Automatic: surround when always dark, soft bottom fade otherwise",
+                "Surround (dark all around the edge)", "Fade (soft darkening at the bottom and top)"}, 4000, cfg.getInt("vigStyle", 0));
+        label(l, "Surround shape");
+        final RadioGroup shapeG = radios(l, new String[]{"Oval, fitted to the screen", "Circle", "Rounded rectangle"}, 4100, vigShape);
+        final EditText spread = numField(l, "Vignette spread in percent (50 = reaches far in, 150 = only the edge)", vigSpread);
+        final EditText ytV = numField(l, "Vignette strength over the YouTube widget (0 = off)", ytVig);
         final EditText tileRad = numField(l, "Bar corner roundness in dp (the rounded contacts bar; 0 = sharp)", tileRadius);
-        label(l, "Centre logo (a PNG shown at the top middle of the map, for example your car's badge). Nothing is shown unless you choose one.");
-        Button logoB = flat("Choose centre logo (PNG)");
+        label(l, "Logo (a PNG shown in the top corner of the map, for example your car's badge; on the right when the driver sits on the left). Nothing is shown unless you choose one.");
+        Button logoB = flat("Choose logo (PNG)");
         logoB.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -3061,7 +3252,7 @@ public class MainActivity extends Activity {
             }
         });
         addFull(l, logoB);
-        Button logoOff = flat("Remove centre logo");
+        Button logoOff = flat("Remove logo");
         logoOff.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -3070,8 +3261,7 @@ public class MainActivity extends Activity {
             }
         });
         addFull(l, logoOff);
-        final EditText logoSize = numField(l, "Centre logo size in dp", cfg.getInt("logoSize", 56));
-        final EditText glowF = numField(l, "Icon glow in percent (0 = off)", iconGlow);
+        final EditText logoSize = numField(l, "Logo size in dp (default 160)", cfg.getInt("logoSize", 160));
         label(l, "Theme file: colours, icons, menus and layout in one file. Export a template to edit it or give it to a designer, then import it.");
         Button expT = flat("Export theme template");
         expT.setOnClickListener(new View.OnClickListener() {
@@ -3107,29 +3297,73 @@ public class MainActivity extends Activity {
             }
         });
         addFull(l, cal);
-        final CheckBox pip = check(l, "Show the 360 window area (turn off for the simple full-width layout)", cfg.getBoolean("pipOn", true));
+        final CheckBox pip = check(l, "Show the 360 window area (leave off for the simple full-width layout)", cfg.getBoolean("pipOn", false));
         final CheckBox avoid = check(l, "Keep the map and YouTube clear of the 360 window (turn info moves above it)", cfg.getBoolean("avoidPip", true));
         final CheckBox status = check(l, "Show the status bar (date and the three buttons)", cfg.getBoolean("showStatus", false));
+        final CheckBox statusFrame = check(l, "Draw glass frames behind the status bar icons (only with the status bar switched on)", cfg.getBoolean("statusFrame", true));
+        final EditText statusH = numField(l, "Status bar frame height in dp (default 44)", cfg.getInt("statusH", 44));
+        final CheckBox statusHome = check(l, "Also draw the status bar frame on the home screen", cfg.getBoolean("statusHome", true));
         label(l, "Driver's seat");
         final RadioGroup seatG = radios(l, new String[]{"Driver on the right", "Driver on the left"}, 8000, cfg.getInt("seat", 0));
         final CheckBox frame = check(l, "Draw the black margin and rounded corners over every app", cfg.getBoolean("frame", true));
-        final CheckBox frameExt = check(l, "Extended frame (simple layout only): the bottom of the frame grows into a bar with 360 and your primary contact", cfg.getBoolean("frameExt", false));
-        final EditText shH = numField(l, "Extended bar height in percent of the screen (8 to 30)", cfg.getInt("shieldH", 15));
-        final EditText shA = numField(l, "Extended bar angle in degrees (0 = square)", cfg.getInt("shieldAngle", 15));
+        LinearLayout extL = adv ? l : column();   // extended frame settings appear after holding the About tab
+        final CheckBox frameExt = check(extL, "Extended frame (simple layout only): the bottom of the frame grows into a bar with 360 and your primary contact", cfg.getBoolean("frameExt", false));
+        final EditText shH = numField(extL, "Extended bar height in percent of the screen (8 to 30)", cfg.getInt("shieldH", 18));
+        final EditText shA = numField(extL, "Extended bar angle in degrees (0 = square)", cfg.getInt("shieldAngle", 15));
         final CheckBox noSys = check(l, "Do not draw the frame or bar over Android system apps (the 360 app is always covered)", cfg.getBoolean("noSystem", true));
         label(l, "The frame and the extended bar do not let touches through. The margin and corner size are set in Calibrate layout and frame (above).");
-        final EditText ui = numField(l, "UI size in percent (100 = small, 130 = default, up to 160)", cfg.getInt("uiScale", 130));
-        label(l, "Buttons in the bottom bar");
-        final CheckBox[] dockChecks = new CheckBox[DOCK_IDS.length];
-        String selD = "," + cfg.getString("dockItems", DOCK_DEFAULT) + ",";
-        for (int k = 0; k < DOCK_IDS.length; k++) {
-            dockChecks[k] = check(l, DOCK_NAMES[k], selD.contains("," + DOCK_IDS[k] + ","));
-        }
+        final EditText ui = numField(l, "UI size in percent (100 = default, up to 160)", cfg.getInt("uiScale", 100));
+        label(l, "Order of the buttons in the bottom bar (with the 360 window layout). Use the arrows to move one.");
+        final ArrayList<String> order = dockOrder();
+        final LinearLayout dockBox = new LinearLayout(this);
+        dockBox.setOrientation(LinearLayout.VERTICAL);
+        final Runnable[] fill = new Runnable[1];
+        fill[0] = new Runnable() {
+            @Override
+            public void run() {
+                dockBox.removeAllViews();
+                for (int k = 0; k < order.size(); k++) {
+                    final int at = k;
+                    String nm = order.get(k);
+                    for (int q = 0; q < DOCK_IDS.length; q++) if (DOCK_IDS[q].equals(nm)) nm = DOCK_NAMES[q];
+                    LinearLayout row = new LinearLayout(MainActivity.this);
+                    row.setOrientation(LinearLayout.HORIZONTAL);
+                    row.setGravity(Gravity.CENTER_VERTICAL);
+                    TextView tn = new TextView(MainActivity.this);
+                    tn.setText((k + 1) + "  " + nm);
+                    tn.setTextColor(WHITE);
+                    tn.setTextSize(15);
+                    row.addView(tn, new LinearLayout.LayoutParams(0, -2, 1f));
+                    Button up = flat("▲");
+                    up.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            if (at > 0) {
+                                Collections.swap(order, at, at - 1);
+                                fill[0].run();
+                            }
+                        }
+                    });
+                    Button dn = flat("▼");
+                    dn.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            if (at < order.size() - 1) {
+                                Collections.swap(order, at, at + 1);
+                                fill[0].run();
+                            }
+                        }
+                    });
+                    row.addView(up, new LinearLayout.LayoutParams(-2, -2));
+                    row.addView(dn, new LinearLayout.LayoutParams(-2, -2));
+                    dockBox.addView(row);
+                }
+            }
+        };
+        fill[0].run();
+        addFull(l, dockBox);
 
         l = newSec(secNames, secViews, "Map");
-        label(l, "Map style");
-        final RadioGroup styG = radios(l, new String[]{"Line art (thin pale roads, follows the theme)",
-                "Standard (Mapsforge colours)"}, 5000, cfg.getInt("mapStyle", 0));
         label(l, "Map engine");
         final RadioGroup engG = radios(l, new String[]{"Mapsforge, flat (default, uses a .map file)",
                 "MapLibre 3D (uses a .mbtiles vector file, tilted view with 3D buildings)"}, 5100, cfg.getInt("mapEngine", 0));
@@ -3185,35 +3419,21 @@ public class MainActivity extends Activity {
         final CheckBox a360video = check(l, "Also wait while a video is playing", cfg.getBoolean("auto360PauseVideo", false));
         final EditText retry = numField(l, "Start 360 this many seconds after boot if it is not showing (0 = off)", cfg.getInt("boot360Retry", 5));
         final EditText auto = numField(l, "Open radio this many seconds after boot (0 = off)", cfg.getInt("autoRadio", 1));
+        final CheckBox coverOn = check(l, "Cover the screen with black while the 360 app starts, then fade it out (hides its start-up screens; needs display over other apps)", cfg.getBoolean("coverOn", true));
+        final EditText coverMs = numField(l, "Cover time in seconds (1 to 15)", cfg.getInt("coverSec", 4));
 
         l = newSec(secNames, secViews, "Floating buttons");
-        final CheckBox floating = check(l, "Show floating buttons", cfg.getBoolean("floating", true));
-        label(l, "Which buttons (Back and Mute depend on the unit and may not work; Home always does)");
-        final CheckBox[] btnChecks = new CheckBox[FloatingService.BTN_IDS.length];
-        String selB = "," + cfg.getString("floatBtns", "home") + ",";
-        for (int k = 0; k < btnChecks.length; k++) {
-            btnChecks[k] = check(l, FloatingService.BTN_NAMES[k], selB.contains("," + FloatingService.BTN_IDS[k] + ","));
-        }
-        label(l, "Where they show: only in the apps you choose. By default that is only the 360 app, because other apps have their own navigation buttons.");
-        addFull(l, appsButton("Choose apps for the floating buttons", "floatIn"));
-        final EditText fdelay = numField(l, "Show the interface and floating buttons this many extra seconds after the 360 start check (0 to 59)", cfg.getInt("floatDelay", 5));
+        final CheckBox floating = check(l, "Show the floating Home button (only in the 360 app, and not while the extended frame is on)", cfg.getBoolean("floating", true));
+        label(l, "It appears only over the 360 app, because other apps have their own navigation buttons.");
+        final EditText fdelay = numField(l, "Show the interface and floating button this many extra seconds after the 360 start check (0 to 59)", cfg.getInt("floatDelay", 5));
         final CheckBox lock = check(l, "Lock floating button position", cfg.getBoolean("floatLock", false));
         final EditText fsize = numField(l, "Button size in dp", cfg.getInt("floatSize", 84));
         label(l, "Colour");
         String[] colNames = new String[4];
         for (int k = 0; k < 4; k++) colNames[k] = FloatingService.COLOR_NAMES[k];
         final RadioGroup colG = radios(l, colNames, 6000, cfg.getInt("floatColor", 0));
-        label(l, "What the Mute button does (it may not work on every unit: try each until the radio goes quiet)");
-        final RadioGroup muteG = radios(l, new String[]{
-                "Like the system mute key (recommended)",
-                "Mute the media stream",
-                "Volume to zero and back",
-                "Pause and resume playback",
-                "Send a broadcast (action below)"}, 9200, cfg.getInt("muteMode", 0));
-        final EditText muteAction = field(l, "Broadcast action for mute (only for that mode)", cfg.getString("muteAction", ""), InputType.TYPE_CLASS_TEXT);
 
         // the call tab normally shows only how to call; the rest appears after holding the About tab
-        final boolean adv = cfg.getBoolean("advanced", false);
         l = newSec(secNames, secViews, "Calling");
         label(l, "Call through Bluetooth (the phone connected to the unit) or through the unit's own SIM (a phone account from Google).");
         final Button accBtn = flat("Call through: " + accountLabel(account[0]));
@@ -3230,7 +3450,7 @@ public class MainActivity extends Activity {
         final EditText macro = field(callAdv, "Macro broadcast action (only for macro mode)", cfg.getString("macroAction", ""), InputType.TYPE_CLASS_TEXT);
 
         l = adv ? newSec(secNames, secViews, "Steering-wheel voice button") : column();
-        label(l, "Easiest: in your unit's voice or Speech app list (for example TW Radio Select, Speech) pick \"Rehome Call\". Pressing the wheel button then calls the primary contact.");
+        label(l, "Easiest: in your unit's voice or Speech app list (for example TW Radio Select, Speech) pick \"Rehome: Call Plugin\". Pressing the wheel button then calls the primary contact.");
         label(l, "If the unit sends a key to the launcher itself:");
         final RadioGroup voiceG = radios(l, new String[]{"Call the primary contact", "Open the voice assistant app",
                 "Send a macro broadcast"}, 2000, cfg.getInt("voiceMode", 0));
@@ -3259,7 +3479,7 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(-2, -2);
         mlp.topMargin = rdp(14);
         l.addView(made, mlp);
-        label(l, "Credits: Claude (Anthropic), ChatGPT (OpenAI), Gemini (Google). Map data: OpenStreetMap contributors. Map engine: Mapsforge.");
+        label(l, "Credits: Claude (Anthropic), lead builder and designer. Google AI, images and media. Minor helpers: ChatGPT (OpenAI) and Grok (xAI). Map data: OpenStreetMap contributors. Map engine: Mapsforge.");
 
         new Panel("Launcher settings", settingsBody(secNames, secViews), false, true)
                 .button("Cancel", null)
@@ -3280,7 +3500,7 @@ public class MainActivity extends Activity {
                                 .putString("pkgMusic", musicPkg[0])
                                 .putString("pkgNav", navPkg[0])
                                 .putString("pkgCar", carPkg[0])
-                                .putInt("mapStyle", checkedIdx(styG, 5000, 2, 0))
+                                .putInt("mapStyle", 0)
                                 .putInt("mapZoom", Math.max(12, Math.min(19, intOf(zoom, 18))))
                                 .putInt("mapText", Math.max(100, Math.min(300, intOf(mapText, 300))))
                                 .putBoolean("showInfo", showInfo.isChecked())
@@ -3300,17 +3520,23 @@ public class MainActivity extends Activity {
                                 .putBoolean("floatLock", lock.isChecked())
                                 .putInt("floatSize", Math.max(48, Math.min(160, intOf(fsize, 84))))
                                 .putInt("floatColor", checkedIdx(colG, 6000, 4, 0))
-                                .putInt("muteMode", checkedIdx(muteG, 9200, 5, 0))
+                                .putBoolean("coverOn", coverOn.isChecked())
+                                .putInt("coverSec", Math.max(1, Math.min(15, intOf(coverMs, 4))))
+                                .putBoolean("statusFrame", statusFrame.isChecked())
+                                .putInt("statusH", Math.max(24, Math.min(120, intOf(statusH, 44))))
+                                .putBoolean("statusHome", statusHome.isChecked())
+                                .putInt("vigStyle", checkedIdx(vigG, 4000, 3, 0))
+                                .putInt("vigShape", checkedIdx(shapeG, 4100, 3, 0))
+                                .putInt("vigSpread", Math.max(50, Math.min(150, intOf(spread, 100))))
+                                .putInt("ytVignette", Math.max(0, Math.min(200, intOf(ytV, 120))))
                                 .putInt("mapEngine", checkedIdx(engG, 5100, 2, 0))
-                                .putInt("logoSize", Math.max(24, Math.min(160, intOf(logoSize, 56))))
+                                .putInt("logoSize", Math.max(24, Math.min(240, intOf(logoSize, 160))))
                                 .putInt("mapTilt", Math.max(0, Math.min(70, intOf(tilt, 55))))
                                 .putBoolean("frameExt", frameExt.isChecked())
                                 .putBoolean("noSystem", noSys.isChecked())
-                                .putString("floatBtns", pickedButtons(btnChecks))
                                 .putInt("floatDelay", Math.max(0, Math.min(59, intOf(fdelay, 5))))
-                                .putInt("shieldH", Math.max(8, Math.min(30, intOf(shH, 15))))
+                                .putInt("shieldH", Math.max(8, Math.min(30, intOf(shH, 18))))
                                 .putInt("shieldAngle", Math.max(0, Math.min(60, intOf(shA, 15))))
-                                .putString("muteAction", muteAction.getText().toString().trim())
                                 .putInt("callMode", checkedIdx(rg, 1000, 3, 0))
                                 .putString("macroAction", macro.getText().toString().trim())
                                 .putBoolean("showStatus", status.isChecked())
@@ -3320,15 +3546,12 @@ public class MainActivity extends Activity {
                                 .putBoolean("frame", frame.isChecked())
                                 .putInt("uiScale", sc);
                         // theme values stay in charge unless a number was changed here
-                        keepOrRemove(ed, "vignette", Math.max(0, Math.min(200, intOf(vignette, vigStrength))), themeJ.optInt("vignette", 50));
-                        keepOrRemove(ed, "tileRadius", Math.max(0, Math.min(60, intOf(tileRad, tileRadius))), themeJ.optInt("tileRadius", 30));
-                        keepOrRemove(ed, "iconGlow", Math.max(0, Math.min(100, intOf(glowF, iconGlow))), themeJ.optInt("iconGlow", 45));
+                        keepOrRemove(ed, "vignette", Math.max(0, Math.min(200, intOf(vignette, vigStrength))), themeJ.optInt("vignette", 200));
+                        keepOrRemove(ed, "tileRadius", Math.max(0, Math.min(60, intOf(tileRad, tileRadius))), themeJ.optInt("tileRadius", 60));
                         StringBuilder dk = new StringBuilder();
-                        for (int k = 0; k < DOCK_IDS.length; k++) {
-                            if (dockChecks[k].isChecked() || DOCK_IDS[k].equals("settings")) {
-                                if (dk.length() > 0) dk.append(',');
-                                dk.append(DOCK_IDS[k]);
-                            }
+                        for (String did : order) {
+                            if (dk.length() > 0) dk.append(',');
+                            dk.append(did);
                         }
                         ed.putString("dockItems", dk.toString());
                         if (seatChanged) ed.remove("floatX").remove("floatY");

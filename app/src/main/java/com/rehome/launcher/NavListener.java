@@ -23,6 +23,8 @@ public class NavListener extends NotificationListenerService {
 
     public static volatile CharSequence title;
     public static volatile CharSequence text;
+    /** Third line of the notification (destination, arrival time) when the navigation app provides it. */
+    public static volatile CharSequence sub;
     public static volatile Bitmap icon;
     public static volatile Runnable onChange;
     /** Raw data of the last navigation notification, shown by the test button in settings. */
@@ -53,6 +55,7 @@ public class NavListener extends NotificationListenerService {
         if (sbn != null && isNav(sbn.getPackageName())) {
             title = null;
             text = null;
+            sub = null;
             icon = null;
             fire();
         }
@@ -74,6 +77,7 @@ public class NavListener extends NotificationListenerService {
         CharSequence t = n.extras.getCharSequence(Notification.EXTRA_TITLE);
         CharSequence x = n.extras.getCharSequence(Notification.EXTRA_TEXT);
         CharSequence sub = n.extras.getCharSequence(Notification.EXTRA_SUB_TEXT);
+        CharSequence sub0 = sub != null ? sub : n.extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT);
         CharSequence big = n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT);
         CharSequence info = n.extras.getCharSequence(Notification.EXTRA_INFO_TEXT);
         Bitmap b = iconFromExtras(n);
@@ -106,6 +110,7 @@ public class NavListener extends NotificationListenerService {
         debug = dbg.toString();
         title = t;
         text = x;
+        sub = sub0;
         icon = b;
         fire();
     }

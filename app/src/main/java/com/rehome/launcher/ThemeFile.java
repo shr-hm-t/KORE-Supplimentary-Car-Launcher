@@ -29,7 +29,7 @@ final class ThemeFile {
             + "\"building\":\"#B7C3CF\",\"text\":\"#1B2733\",\"halo\":\"#CCE9EEF3\"}},"
             + "\"menu\":{\"bgTop\":\"#212B35\",\"bgBottom\":\"#0A0E12\",\"stroke\":\"#5A6068\","
             + "\"accent\":\"#FF8A1E\",\"text\":\"#F2F5F8\",\"sub\":\"#9BA1A8\"},"
-            + "\"vignette\":50,\"tileRadius\":30,\"tileGap\":0,\"iconGlow\":45,"
+            + "\"vignette\":200,\"tileRadius\":60,\"tileGap\":0,\"iconGlow\":0,"
             + "\"layout\":{\"pipW\":0.398,\"pipH\":0.515,\"barH\":0.15,\"dockH\":0.065},"
             + "\"frame\":{\"margin\":8,\"corner\":60},"
             + "\"iconColors\":{},"

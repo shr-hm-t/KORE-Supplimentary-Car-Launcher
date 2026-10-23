@@ -1,5 +1,24 @@
 # Release notes
 
+## 1.6 (compared with 1.5)
+
+Fixes and changes from the 1.5 car test.
+
+- **Settings always reachable:** opening Rehome from the app list opens the settings; holding the clock, the logo, any bar icon or the bar itself does too.
+- **Floating button:** only the Home button, only over the 360 app, and not while the extended frame is on (the extended bar's 360 button turns into Home while the 360 app is shown). Its position is remembered separately for each driver side.
+- **Frame:** the status bar frame is now two glass slabs like the contacts bar (height adjustable, can be switched off, can skip the home screen). The corner frame starts at the bottom of the status bar frame. The extended frame settings are hidden until you hold the About tab.
+- **Vignette:** two styles (surround or a soft bottom fade; automatic uses the fade except in always-dark mode), three surround shapes (oval, circle, rounded rectangle), spread, a separate strength over the YouTube widget, smoother edge. Default 200.
+- **Contact bar:** one rounded bezel with a thin divider between the icons, corner 60 by default; the icons no longer sit on separate glass.
+- **Navigation and city text** are right-aligned without boxes; navigation shows the extra line (destination or arrival time) when the navigation app provides it. The play button sits above the bars.
+- **Logo** moves to the top corner (right when the driver sits on the left); default size 160. Hold it for settings.
+- **Bottom bar:** all buttons shown, order set in settings; two new buttons (open YouTube in the browser). With the 360 window layout, tapping the map/video button switches the widget. The app list is now a large icon grid.
+- **Defaults:** no 360 window, UI size 100, map always line art, call-and-wheel and extended-frame settings hidden until About is held, no icon glow, mute removed.
+- **Cover:** a black screen fades out while the 360 app starts.
+- Names: the main app is **Rehome: Scroll**, the installer **Rehome: Installer**, the helper **Rehome: Call Plugin**.
+- Settings tab list shows a small arrow with a fade when there are more tabs below.
+
+Not done yet: flat redesigned icons, a Benz-style theme, the logo sprinkle effect, navigation as an overlay, the extended-frame fixes, 3D map setup help.
+
 ## 1.5 (compared with 1.4)
 
 Renamed to **Rehome** (the repository is rehome-launcher-for-car). The package is now com.rehome.launcher, so this installs as a new app next to the old one: set Rehome as the home app again and go through the welcome screen. Three icons and names: the app itself "Rehome Installer" (what the installer shows), the home screen "Rehome: for you", the call helper "Rehome: Call Plugin".

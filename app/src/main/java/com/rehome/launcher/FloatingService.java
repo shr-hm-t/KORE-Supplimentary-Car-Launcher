@@ -48,6 +48,17 @@ public class FloatingService extends Service {
     static volatile boolean frameOn = false;
     private static FloatingService inst;
 
+    /** Black screen that fades out, hides the start-up screens of the 360 app. */
+    static void cover() {
+        final FloatingService s = inst;
+        if (s != null) s.ui.post(new Runnable() {
+            @Override
+            public void run() {
+                s.showCover();
+            }
+        });
+    }
+
     static void refreshFrame() {
         final FloatingService s = inst;
         if (s != null) s.ui.post(new Runnable() {
@@ -73,7 +84,48 @@ public class FloatingService extends Service {
     private FrameView frameView;
     private final ArrayList<View> blockers = new ArrayList<View>();
     private View tabBox;
+    private StatusView statusView;
+    private MainActivity.Glyph camGlyph;
     private boolean extShown = false;
+
+    private boolean statusWanted() {
+        return cfg.getBoolean("showStatus", false) && cfg.getBoolean("statusFrame", true);
+    }
+
+    private int statusH() {
+        return statusWanted() ? dp(Math.max(24, Math.min(120, cfg.getInt("statusH", 44)))) : 0;
+    }
+
+    /** Two glass slabs behind the system status icons, in the style of the contacts bar. */
+    private class StatusView extends View {
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        StatusView(Context c) {
+            super(c);
+        }
+
+        @Override
+        protected void onDraw(Canvas c) {
+            float w = getWidth(), h = getHeight();
+            float m = dp(cfg.getInt("margin", 8));
+            float gap = dp(5);
+            float sw = w * 0.30f;
+            RectF l = new RectF(m + gap, gap, sw, h - gap);
+            RectF r = new RectF(w - sw, gap, w - m - gap, h - gap);
+            float rad = Math.min(l.height() / 2f, dp(cfg.getInt("corner", 60)));
+            for (RectF b : new RectF[]{l, r}) {
+                p.setStyle(Paint.Style.FILL);
+                p.setShader(new android.graphics.LinearGradient(0, b.top, 0, b.bottom,
+                        new int[]{0xCC1A242E, 0xEE0A1016}, null, android.graphics.Shader.TileMode.CLAMP));
+                c.drawRoundRect(b, rad, rad, p);
+                p.setShader(null);
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(Math.max(1.5f, dp(1)));
+                p.setColor(0x66FFFFFF);
+                c.drawRoundRect(b, rad, rad, p);
+            }
+        }
+    }
 
     @Override
     public IBinder onBind(Intent i) {
@@ -101,6 +153,61 @@ public class FloatingService extends Service {
         return cfg.getInt("seat", 0) == 1;
     }
 
+    private String posKey(String axis) {
+        return axis + (mirror() ? "L" : "R");   // one saved position per driver side
+    }
+
+    private View coverView;
+
+    private void showCover() {
+        if (!cfg.getBoolean("coverOn", true) || wm == null) return;
+        hideCover(false);
+        final View v = new View(this);
+        v.setBackgroundColor(Color.BLACK);
+        v.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View view, MotionEvent e) {
+                return true;
+            }
+        });
+        WindowManager.LayoutParams cl = new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, overlayType(),
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT);
+        cl.gravity = Gravity.TOP | Gravity.START;
+        try {
+            wm.addView(v, cl);
+        } catch (Exception e) {
+            return;
+        }
+        coverView = v;
+        long ms = Math.max(1, Math.min(15, cfg.getInt("coverSec", 4))) * 1000L;
+        ui.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (coverView != v) return;
+                v.animate().alpha(0f).setDuration(600).withEndAction(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (coverView == v) hideCover(false);
+                    }
+                }).start();
+            }
+        }, ms);
+    }
+
+    private void hideCover(boolean unused) {
+        if (coverView != null) {
+            try {
+                wm.removeView(coverView);
+            } catch (Exception ignored) {
+            }
+            coverView = null;
+        }
+    }
+
     private boolean extWanted() {
         return cfg.getBoolean("frame", true) && cfg.getBoolean("frameExt", false) && !cfg.getBoolean("pipOn", true);
     }
@@ -126,11 +233,12 @@ public class FloatingService extends Service {
             float r = dp(cfg.getInt("corner", 60));
             p.setStyle(Paint.Style.FILL);
             p.setColor(Color.BLACK);
+            float st = statusH();   // the corner frame starts at the bottom of the status bar frame
             if (m >= 1f || r >= 1f) {
                 path.reset();
                 path.setFillType(Path.FillType.EVEN_ODD);
-                path.addRect(0, 0, w, h, Path.Direction.CW);
-                path.addRoundRect(new RectF(m, m, w - m, h - m), r, r, Path.Direction.CW);
+                path.addRect(0, st, w, h, Path.Direction.CW);
+                path.addRoundRect(new RectF(m, st > 0 ? st : m, w - m, h - m), r, r, Path.Direction.CW);
                 c.drawPath(path, p);
             }
             if (extShown) {
@@ -143,22 +251,6 @@ public class FloatingService extends Service {
                 path.lineTo(t[1], t[2]);
                 path.lineTo(t[1] + t[4], h - bh);
                 path.lineTo(t[0] - t[4], h - bh);
-                path.close();
-                c.drawPath(path, p);
-            }
-            if (cfg.getBoolean("showStatus", false)) {
-                // split status bar: a slab on each side, the middle stays open
-                float sh = dp(30), sw = w * 0.30f, sl = sh;
-                path.reset();
-                path.moveTo(0, 0);
-                path.lineTo(sw + sl, 0);
-                path.lineTo(sw, sh);
-                path.lineTo(0, sh);
-                path.close();
-                path.moveTo(w, 0);
-                path.lineTo(w - sw - sl, 0);
-                path.lineTo(w - sw, sh);
-                path.lineTo(w, sh);
                 path.close();
                 c.drawPath(path, p);
             }
@@ -218,6 +310,13 @@ public class FloatingService extends Service {
         }
         blockers.clear();
         tabBox = null;
+        if (statusView != null) {
+            try {
+                wm.removeView(statusView);
+            } catch (Exception ignored) {
+            }
+            statusView = null;
+        }
         if (frameView != null) {
             try {
                 wm.removeView(frameView);
@@ -251,16 +350,30 @@ public class FloatingService extends Service {
         }
         // the black parts do not let touches through
         int m = dp(cfg.getInt("margin", 8));
+        int sh = statusH();
         if (m > 0) {
-            if (!cfg.getBoolean("showStatus", false)) {
-                addBlocker(solid(), W, m, Gravity.TOP | Gravity.START, 0, 0);
-            }
-            addBlocker(solid(), m, H, Gravity.TOP | Gravity.START, 0, 0);
-            addBlocker(solid(), m, H, Gravity.TOP | Gravity.END, 0, 0);
+            if (sh == 0) addBlocker(solid(), W, m, Gravity.TOP | Gravity.START, 0, 0);
+            addBlocker(solid(), m, H - sh, Gravity.TOP | Gravity.START, 0, sh);
+            addBlocker(solid(), m, H - sh, Gravity.TOP | Gravity.END, 0, sh);
             if (!extShown) addBlocker(solid(), W, m, Gravity.BOTTOM | Gravity.START, 0, 0);
         }
-        if (cfg.getBoolean("showStatus", false)) {
-            int sh = dp(30), sw = Math.round(W * 0.30f);
+        if (sh > 0) {
+            // glass slabs behind the status icons (they also block touches)
+            statusView = new StatusView(this);
+            WindowManager.LayoutParams sl = new WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.MATCH_PARENT, sh, overlayType(),
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                            | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                    PixelFormat.TRANSLUCENT);
+            sl.gravity = Gravity.TOP | Gravity.START;
+            try {
+                wm.addView(statusView, sl);
+            } catch (Exception e) {
+                statusView = null;
+            }
+            int sw = Math.round(W * 0.30f);
             addBlocker(solid(), sw, sh, Gravity.TOP | Gravity.START, 0, 0);
             addBlocker(solid(), sw, sh, Gravity.TOP | Gravity.END, 0, 0);
         }
@@ -281,6 +394,7 @@ public class FloatingService extends Service {
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER);
             View cam = bubble(MainActivity.Glyph.R360, bs);
+            camGlyph = (MainActivity.Glyph) ((FrameLayout) cam).getChildAt(0);
             View call = bubble(MainActivity.Glyph.DIAL, bs);
             if (mirror()) {
                 row.addView(call);
@@ -293,9 +407,14 @@ public class FloatingService extends Service {
             cam.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
+                    if (AppWatcher.pkg.equals(cfg.getString("pkg360", ""))) {
+                        goHome();   // the 360 app is on screen: this button is Home
+                        return;
+                    }
                     Intent i = getPackageManager().getLaunchIntentForPackage(cfg.getString("pkg360", ""));
                     if (i == null) return;
                     i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    showCover();
                     startActivity(i);
                 }
             });
@@ -350,8 +469,17 @@ public class FloatingService extends Service {
         }
         for (View v : blockers) v.setVisibility(vis);
         if (root != null) {
-            boolean show = !known || (!home && inList("floatIn", pkg, cam));
+            // only over the 360 app, and not while the extended frame has its own Home button
+            boolean show = known && !home && cam.length() > 0 && pkg.equals(cam) && !extShown;
             root.setVisibility(show ? View.VISIBLE : View.GONE);
+        }
+        if (statusView != null) {
+            boolean onHome = known && home;
+            boolean showStatus = !(onHome && !cfg.getBoolean("statusHome", true));
+            statusView.setVisibility(vis == View.VISIBLE && showStatus ? View.VISIBLE : View.GONE);
+        }
+        if (camGlyph != null) {
+            camGlyph.setType(known && pkg.equals(cam) ? MainActivity.Glyph.HOME : MainActivity.Glyph.R360);
         }
     }
 
@@ -416,7 +544,7 @@ public class FloatingService extends Service {
                         return true;
                     case MotionEvent.ACTION_UP:
                         if (moved) {
-                            cfg.edit().putInt("floatX", lp.x).putInt("floatY", lp.y).apply();
+                            cfg.edit().putInt(posKey("floatX"), lp.x).putInt(posKey("floatY"), lp.y).apply();
                         } else {
                             onClick.run();
                         }
@@ -446,12 +574,8 @@ public class FloatingService extends Service {
             root = new LinearLayout(this);
             root.setOrientation(LinearLayout.HORIZONTAL);
             root.setGravity(Gravity.CENTER_VERTICAL);
-            String ids = "," + cfg.getString("floatBtns", "home") + ",";
-            for (String id : BTN_IDS) {
-                if (!ids.contains("," + id + ",")) continue;
-                View b = makeButton(id);
-                if (b != null) root.addView(b);
-            }
+            View hb = makeButton("home");   // only the Home button
+            if (hb != null) root.addView(hb);
             if (root.getChildCount() == 0) {
                 root = null;
             } else {
@@ -467,8 +591,8 @@ public class FloatingService extends Service {
                 int size = dp(Math.max(48, Math.min(160, cfg.getInt("floatSize", 84))));
                 int defX = mirror() ? dm.widthPixels - size * 2 - dp(36) : dp(14);
                 int defY = (int) (dm.heightPixels * 0.40f);
-                lp.x = cfg.getInt("floatX", defX);
-                lp.y = cfg.getInt("floatY", defY);
+                lp.x = cfg.getInt(posKey("floatX"), defX);
+                lp.y = cfg.getInt(posKey("floatY"), defY);
                 try {
                     wm.addView(root, lp);
                 } catch (Exception e) {
@@ -557,6 +681,7 @@ public class FloatingService extends Service {
         Intent i = getPackageManager().getLaunchIntentForPackage(pkg);
         if (i == null) return;
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (pkg.equals(cfg.getString("pkg360", ""))) showCover();
         startActivity(i);
     }
 
@@ -629,6 +754,7 @@ public class FloatingService extends Service {
         frameOn = false;
         AppWatcher.stop();
         removeFrame();
+        hideCover(false);
         if (inst == this) inst = null;
         try {
             if (wm != null && root != null) wm.removeView(root);

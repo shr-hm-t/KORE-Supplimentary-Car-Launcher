@@ -23,14 +23,14 @@
         android:allowBackup="false"
         android:requestLegacyExternalStorage="true"
         android:icon="@mipmap/ic_installer"
-        android:label="Rehome Installer"
+        android:label="Rehome: Installer"
         android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
         android:usesCleartextTraffic="false">
 
         <activity
             android:name=".MainActivity"
             android:icon="@mipmap/ic_launcher"
-            android:label="Rehome: for you"
+            android:label="Rehome: Scroll"
             android:directBootAware="true"
             android:exported="true"
             android:launchMode="singleTask"
