@@ -1,6 +1,6 @@
 # Rehome: Launcher for Car
 
-<img align="left" src="https://wsrv.nl" alt="Rehome Launcher Showcase" width="320" style="max-width: 100%; margin-right: 15px; margin-bottom: 10px;">
+<img align="left" src="https://github.com/shr-hm-t/rehome-launcher-for-car/assets/image.png" alt="Rehome Launcher Showcase" width="320" style="max-width: 100%; margin-right: 15px; margin-bottom: 10px;">
 
 A simple home screen for Android car head units: offline map, 360 camera window, radio, one-tap contacts, and a dark glass look.
 
