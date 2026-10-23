@@ -20,7 +20,7 @@ Renamed to **Rehome** (the repository is rehome-launcher-for-car). The package i
 
 ## 1.4 (compared with 1.3)
 
-- Package name is now com.kore.launcher (a new app: it does not update over the old one; set Rehome as the home app again and redo the permissions). The APK is called Rehome.apk.
+- Package name is now a different package name from before (a new app: it does not update over the old one; set Rehome as the home app again and redo the permissions). The APK is called Rehome.apk.
 - New app icon.
 - The welcome screen asks whether your unit has a 360 window (PIP).
 - Wider Tesla-style speed glow along the top and sides.
@@ -75,7 +75,7 @@ Note: the 1.1 release was built from a commit whose app version already said 1.2
 
 **Calling**
 - Choose the account (Bluetooth or SIM) for calls.
-- Steering-wheel voice button: pick "Vezel Call" in the unit's voice list to call the primary contact.
+- Steering-wheel voice button: pick "Call Plugin" in the unit's voice list to call the primary contact.
 
 **Look**
 - Radio-style look: gradient, soft colour blobs, vignette, dark translucent tiles, orange accent.

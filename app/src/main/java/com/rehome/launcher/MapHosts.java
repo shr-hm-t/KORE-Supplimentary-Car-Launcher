@@ -185,7 +185,7 @@ final class MapsforgeHost implements MapHost {
         mv.getModel().mapViewPosition.setZoomLevel((byte) zoom);
         mv.getModel().mapViewPosition.setCenter(new LatLong(6.9271, 79.8612));
 
-        TileCache cache = AndroidUtil.createTileCache(a, themeFile != null ? "vezelmap-line" : "vezelmap",
+        TileCache cache = AndroidUtil.createTileCache(a, themeFile != null ? "rehomemap-line" : "vezelmap",
                 mv.getModel().displayModel.getTileSize(), 1f,
                 mv.getModel().frameBufferModel.getOverdrawFactor());
         MapDataStore store = new MapFile(mapFile);

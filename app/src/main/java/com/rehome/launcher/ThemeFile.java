@@ -16,7 +16,7 @@ final class ThemeFile {
     }
 
     static final String DEFAULT = "{"
-            + "\"name\":\"Vezel Radio\",\"version\":2,"
+            + "\"name\":\"Rehome Default\",\"version\":2,"
             + "\"dark\":{\"bgTop\":\"#1B2733\",\"bgBottom\":\"#0A0F14\",\"accent\":\"#FF8A1E\","
             + "\"text\":\"#F2F5F8\",\"sub\":\"#9BA1A8\",\"glyph\":\"#F2F5F8\","
             + "\"tileFill\":\"#59000000\",\"tileStroke\":\"#66FFFFFF\",\"vignetteColor\":\"#000000\","

@@ -1,8 +1,8 @@
-# Rehome: Launcher for Car (old names: KORE, Vezel Launcher)
+# Rehome: Launcher for Car
 
 A minimal, car-first home screen for Android head units. Black, grey and cool-white chrome, sharp panels, a live map, one-tap calls and a tyre-pressure slot.
 
-Built and tested on a Honda Vezel (2025) with a Nakamichi NAM5850 aftermarket unit. It should work on other landscape Android head units, but it has not been tested on them yet.
+Built and tested on a 2025 compact SUV with a Nakamichi NAM5850 aftermarket unit. It should work on other landscape Android head units, but it has not been tested on them yet.
 
 > **Status:** version 1.0. Tested on one car and one unit so far, so other head units may behave differently. Issues and ideas are welcome.
 
@@ -44,7 +44,7 @@ Updates install over the old version only when both were signed with the same ke
 
 ## Themes
 
-The whole look is one JSON file. Export it from Settings > Look, edit it, and import it back. See [THEMING.md](THEMING.md) and `themes/vezel-default-theme.json`.
+The whole look is one JSON file. Export it from Settings > Look, edit it, and import it back. See [THEMING.md](THEMING.md) and `themes/rehome-default-theme.json`.
 
 ## Building from source
 
@@ -64,8 +64,9 @@ Everything stays on the device. The map is fully offline. The only network reque
 
 ## Credits
 
-- [Claude](https://claude.ai) (Anthropic): code, build setup, design iterations, documentation.
-- ChatGPT (OpenAI), Gemini (Google) and Grok: design ideas and early icons.
+- [Claude](https://claude.ai) (Anthropic): lead builder and designer: code, build setup, design, documentation.
+- Google AI: image and media creation (icons, wallpapers, boot artwork).
+- ChatGPT (OpenAI) and Grok (xAI): minor helpers (prompt refinement, early ideas).
 - Idea, direction, hardware testing and feedback: the project owner.
 
 Map rendering by [Mapsforge](https://github.com/mapsforge/mapsforge). Map data © OpenStreetMap contributors.

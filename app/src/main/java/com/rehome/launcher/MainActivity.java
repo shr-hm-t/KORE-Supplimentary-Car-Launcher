@@ -1904,12 +1904,12 @@ public class MainActivity extends Activity {
             int text = ThemeFile.col(mapPal, "text", night ? 0xFFDCE8F5 : 0xFF1B2733);
             int halo = ThemeFile.col(mapPal, "halo", night ? 0xCC0A1220 : 0xCCE9EEF3);
             String xml = LineArtTheme.xml(ground, water, road, major, bld, text, halo);
-            File f = new File(getFilesDir(), "vezel-lineart-" + Integer.toHexString(xml.hashCode()) + ".xml");
+            File f = new File(getFilesDir(), "rehome-lineart-" + Integer.toHexString(xml.hashCode()) + ".xml");
             if (!f.exists()) {
                 File[] old = getFilesDir().listFiles();
                 if (old != null) {
                     for (File o : old) {
-                        if (o.getName().startsWith("vezel-lineart-")) o.delete();
+                        if (o.getName().startsWith("rehome-lineart-")) o.delete();
                     }
                 }
                 FileOutputStream os = new FileOutputStream(f);
@@ -2554,7 +2554,7 @@ public class MainActivity extends Activity {
 
     private static String http(String urlStr) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(urlStr).openConnection();
-        c.setRequestProperty("User-Agent", "VezelLauncher/0.2 (personal car launcher)");
+        c.setRequestProperty("User-Agent", "RehomeLauncher/0.2 (personal car launcher)");
         c.setConnectTimeout(8000);
         c.setReadTimeout(8000);
         BufferedReader r = new BufferedReader(new InputStreamReader(c.getInputStream(), "UTF-8"));
@@ -2837,13 +2837,13 @@ public class MainActivity extends Activity {
                 vals.put(k, x);
             }
             org.json.JSONObject o = new org.json.JSONObject();
-            o.put("app", "VezelLauncher");
+            o.put("app", "RehomeLauncher");
             o.put("version", versionName());
             o.put("values", vals);
             File dir = getExternalFilesDir("settings");
             if (dir == null) dir = new File(getFilesDir(), "settings");
             dir.mkdirs();
-            File out = new File(dir, "vezel-settings.json");
+            File out = new File(dir, "rehome-settings.json");
             FileOutputStream os = new FileOutputStream(out);
             os.write(o.toString(2).getBytes("UTF-8"));
             os.close();
@@ -2873,7 +2873,7 @@ public class MainActivity extends Activity {
             while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
             in.close();
             org.json.JSONObject o = new org.json.JSONObject(new String(bo.toByteArray(), "UTF-8"));
-            if (!"VezelLauncher".equals(o.optString("app"))) throw new Exception("not a settings file");
+            if (!"RehomeLauncher".equals(o.optString("app"))) throw new Exception("not a settings file");
             org.json.JSONObject vals = o.getJSONObject("values");
             SharedPreferences.Editor ed = cfg.edit();
             java.util.Iterator<String> it = vals.keys();
@@ -2892,7 +2892,7 @@ public class MainActivity extends Activity {
             stopService(new Intent(this, FloatingService.class));
             recreate();
         } catch (Exception e) {
-            Toast.makeText(this, "That file is not a Vezel settings file", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "That file is not a Rehome settings file", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -2920,7 +2920,7 @@ public class MainActivity extends Activity {
             File dir = getExternalFilesDir("theme");
             if (dir == null) dir = new File(getFilesDir(), "theme");
             dir.mkdirs();
-            File out = new File(dir, "vezel-theme.json");
+            File out = new File(dir, "rehome-theme.json");
             FileOutputStream os = new FileOutputStream(out);
             os.write(t.toString(2).getBytes("UTF-8"));
             os.close();
@@ -3241,7 +3241,7 @@ public class MainActivity extends Activity {
         TextView ab = label(l, "Rehome  v" + versionName());
         ab.setTextColor(cText);
         ab.setTextSize(18);
-        label(l, "A home screen for the Honda Vezel / HR-V head unit: map, 360 camera, radio, YouTube and calls on one screen.");
+        label(l, "A home screen for car head units: map, 360 camera, radio, YouTube and calls on one screen.");
         LinearLayout made = new LinearLayout(this);
         made.setOrientation(LinearLayout.HORIZONTAL);
         made.setGravity(Gravity.CENTER_VERTICAL);
