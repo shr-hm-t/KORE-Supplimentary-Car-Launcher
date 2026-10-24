@@ -18,6 +18,7 @@ Fixes and changes from the 1.5 car test. A neutral boot logo and boot animation 
 - **Vignette shapes:** oval, circle, rounded rectangle, and a four-point star where the four edges curve inward.
 - **Logo sparkle** (can be switched off).
 - **Emergency menu:** hold four fingers on the launcher for five seconds to open the settings or reset everything.
+- **Boot pack tab:** makes the boot logo and boot animation on the device from your own badge PNG (optional transparent background) and your own reminder text, and saves the files for you to install with your own tools.
 - Names: the main app is **Rehome: Scroll**, the installer **Rehome: Installer**, the helper **Rehome: Call Plugin**.
 - Settings tab list shows a small arrow with a fade when there are more tabs below.
 

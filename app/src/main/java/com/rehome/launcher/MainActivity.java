@@ -3265,6 +3265,94 @@ public class MainActivity extends Activity {
         recreate();
     }
 
+    private TextView bootStatus;
+    private boolean bootBusy = false;
+
+    private void bootSay(final String s) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (bootStatus != null) bootStatus.setText(s);
+            }
+        });
+    }
+
+    /** Draws the animation on a background thread and saves the files. */
+    private void makeBootPack() {
+        if (bootBusy) return;
+        bootBusy = true;
+        bootSay("Working...");
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Bitmap badge = null;
+                    String bp = cfg.getString("bootBadge", "");
+                    if (bp.length() > 0 && new File(bp).exists()) {
+                        badge = BitmapFactory.decodeFile(bp);
+                        if (badge != null && cfg.getBoolean("badgeRmBg", false)) badge = BootPack.removeBackground(badge);
+                    }
+                    BootPack pack = new BootPack(badge, cfg.getString("bootLines", BootPack.DEFAULT_LINES));
+                    File dir = getExternalFilesDir("boot");
+                    if (dir == null) dir = new File(getFilesDir(), "boot");
+                    pack.write(dir, new BootPack.Progress() {
+                        @Override
+                        public void on(int done, int total) {
+                            bootSay("Working... " + done + " of " + total);
+                        }
+                    });
+                    String where = copyToDownloads(dir);
+                    bootSay("Done. Saved in " + dir.getAbsolutePath() + (where.length() > 0 ? " and in " + where : "")
+                            + ": bootanimation.zip, bootlogo_720x1280_rotated.bmp, bootlogo_1280x720.png.");
+                } catch (Throwable e) {
+                    bootSay("Could not make the boot pack: " + e);
+                } finally {
+                    bootBusy = false;
+                }
+            }
+        }).start();
+    }
+
+    /** Best-effort copy of the files into Download/Rehome so a file manager finds them. */
+    private String copyToDownloads(File dir) {
+        String[] names = {"bootanimation.zip", "bootlogo_720x1280_rotated.bmp", "bootlogo_720x1280_rotated.png", "bootlogo_1280x720.png", "desc.txt"};
+        try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                for (String n : names) {
+                    android.content.ContentValues cv = new android.content.ContentValues();
+                    cv.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, n);
+                    cv.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, n.endsWith(".zip") ? "application/zip"
+                            : n.endsWith(".png") ? "image/png" : n.endsWith(".bmp") ? "image/bmp" : "text/plain");
+                    cv.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "Download/Rehome");
+                    Uri u = getContentResolver().insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+                    if (u == null) return "";
+                    OutputStream os = getContentResolver().openOutputStream(u);
+                    InputStream in = new java.io.FileInputStream(new File(dir, n));
+                    byte[] buf = new byte[1 << 16];
+                    int k;
+                    while ((k = in.read(buf)) > 0) os.write(buf, 0, k);
+                    in.close();
+                    os.close();
+                }
+                return "Download/Rehome";
+            }
+            File d = new File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Rehome");
+            d.mkdirs();
+            for (String n : names) {
+                InputStream in = new java.io.FileInputStream(new File(dir, n));
+                OutputStream os = new FileOutputStream(new File(d, n));
+                byte[] buf = new byte[1 << 16];
+                int k;
+                while ((k = in.read(buf)) > 0) os.write(buf, 0, k);
+                in.close();
+                os.close();
+            }
+            return d.getAbsolutePath();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
     private void editSettings() {
         final String[] radioPkg = {cfg.getString("pkgRadio", "")};
         final String[] camPkg = {cfg.getString("pkg360", "")};
@@ -3557,6 +3645,44 @@ public class MainActivity extends Activity {
         final EditText wheelMacro = field(l, "Macro action for the wheel button (only for macro mode)", cfg.getString("wheelMacro", ""), InputType.TYPE_CLASS_TEXT);
         appButton(l, "Voice assistant app", voicePkg);
 
+        l = newSec(secNames, secViews, "Boot pack");
+        label(l, "Makes a boot logo and a boot animation here on the device: a safety reminder that dissolves into the middle, your badge shining for a moment, then a soft glow. "
+                + "The files are saved so you can copy them to the unit with your own root or flashing tool; Rehome cannot install them itself.");
+        label(l, "Badge: choose a PNG, best one saved with a transparent background. Without one a plain ring-and-house mark is used.");
+        Button bb = flat("Choose badge (PNG)");
+        bb.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                pickFile(REQ_BADGE);
+            }
+        });
+        addFull(l, bb);
+        Button bn = flat("Use the plain badge");
+        bn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                cfg.edit().remove("bootBadge").apply();
+                if (bootStatus != null) bootStatus.setText("Plain badge selected.");
+            }
+        });
+        addFull(l, bn);
+        final CheckBox rmBg = check(l, "Remove a plain background from the badge (the colour of its top-left corner becomes transparent)", cfg.getBoolean("badgeRmBg", false));
+        final EditText bootLines = field(l, "Reminder text, one line per row (up to 8 rows)", cfg.getString("bootLines", BootPack.DEFAULT_LINES),
+                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        bootLines.setSingleLine(false);
+        bootLines.setMinLines(6);
+        bootLines.setGravity(Gravity.TOP);
+        Button make = flat("Make boot pack");
+        make.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                cfg.edit().putBoolean("badgeRmBg", rmBg.isChecked()).putString("bootLines", bootLines.getText().toString()).apply();
+                makeBootPack();
+            }
+        });
+        addFull(l, make);
+        bootStatus = label(l, "Not made yet.");
+
         l = newSec(secNames, secViews, "About");
         TextView ab = label(l, "Rehome  v" + versionName());
         ab.setTextColor(cText);
@@ -3786,7 +3912,7 @@ public class MainActivity extends Activity {
 
     // ------------------------------------------------------------------ offline map file
 
-    private static final int REQ_MAP = 77, REQ_MB = 80, REQ_LOGO = 81;
+    private static final int REQ_MAP = 77, REQ_MB = 80, REQ_LOGO = 81, REQ_BADGE = 82;
 
     private void pickFile(int req) {
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -3819,6 +3945,21 @@ public class MainActivity extends Activity {
             copyMap(data.getData(), "offline.mbtiles", "mbFile");
         } else if (req == REQ_LOGO && res == RESULT_OK && data != null && data.getData() != null) {
             copyMap(data.getData(), "logo.png", "logoFile");
+        } else if (req == REQ_BADGE && res == RESULT_OK && data != null && data.getData() != null) {
+            try {
+                InputStream in = getContentResolver().openInputStream(data.getData());
+                File out = new File(getFilesDir(), "bootbadge.png");
+                OutputStream os = new FileOutputStream(out);
+                byte[] buf = new byte[1 << 16];
+                int n;
+                while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
+                os.close();
+                in.close();
+                cfg.edit().putString("bootBadge", out.getAbsolutePath()).apply();
+                if (bootStatus != null) bootStatus.setText("Badge chosen. Tap Make boot pack.");
+            } catch (Exception e) {
+                Toast.makeText(this, "Could not read that picture", Toast.LENGTH_LONG).show();
+            }
         } else if (req == REQ_THEME && res == RESULT_OK && data != null && data.getData() != null) {
             importTheme(data.getData());
         } else if (req == REQ_SETTINGS && res == RESULT_OK && data != null && data.getData() != null) {
