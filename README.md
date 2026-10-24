@@ -4,7 +4,7 @@
 
 A simple home screen for Android car head units: offline map, 360 camera window, radio, one-tap contacts, and a dark glass look.
 
-Built and tested on one car with a Nakamichi NAM5850 unit. Other landscape units may behave differently.
+Built and tested on one car with one aftermarket Android unit. Other landscape units may behave differently.
 
 <br clear="left" />
 
@@ -32,7 +32,7 @@ Java 17, Gradle 8.9. Run `gradle assembleRelease`, or use the **Build APK** work
 
 ## Extras
 
-- [`boot`](boot): boot logo and boot animation preview
+- [`boot`](boot): boot logo and boot animation (download from there)
 - [`docs/ASSET_PROMPTS.md`](docs/ASSET_PROMPTS.md) and [`docs/ASSET_PROMPT_ONE_SHEET.md`](docs/ASSET_PROMPT_ONE_SHEET.md): prompts for making icons and UI art
 - [`docs/SHOWCASE_PROMPTS.md`](docs/SHOWCASE_PROMPTS.md): prompts for showcase pictures
 

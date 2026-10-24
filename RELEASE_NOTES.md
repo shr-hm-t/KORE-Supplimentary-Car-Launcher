@@ -2,7 +2,7 @@
 
 ## 1.6 (compared with 1.5)
 
-Fixes and changes from the 1.5 car test.
+Fixes and changes from the 1.5 car test. A neutral boot logo and boot animation are in the boot folder.
 
 - **Settings always reachable:** opening Rehome from the app list opens the settings; holding the clock, the logo, any bar icon or the bar itself does too.
 - **Floating button:** only the Home button, only over the 360 app, and not while the extended frame is on (the extended bar's 360 button turns into Home while the 360 app is shown). Its position is remembered separately for each driver side.
@@ -21,7 +21,7 @@ Fixes and changes from the 1.5 car test.
 - Names: the main app is **Rehome: Scroll**, the installer **Rehome: Installer**, the helper **Rehome: Call Plugin**.
 - Settings tab list shows a small arrow with a fade when there are more tabs below.
 
-Not done yet: flat redesigned icons, a Benz-style theme, navigation as an overlay, the extended-frame fixes, 3D map setup help.
+Not done yet: flat redesigned icons, a new theme, navigation as an overlay, the extended-frame fixes, 3D map setup help.
 
 ## 1.5 (compared with 1.4)
 
@@ -46,7 +46,7 @@ Renamed to **Rehome** (the repository is rehome-launcher-for-car). The package i
 - Package name is now a different package name from before (a new app: it does not update over the old one; set Rehome as the home app again and redo the permissions). The APK is called Rehome.apk.
 - New app icon.
 - The welcome screen asks whether your unit has a 360 window (PIP).
-- Wider Tesla-style speed glow along the top and sides.
+- Wider speed glow along the top and sides.
 - Optional 3D map (MapLibre): choose it in Settings > Map and pick an offline .mbtiles vector file (OpenMapTiles layout). Tilted view with 3D buildings; no place names yet. Mapsforge flat map stays the default.
 
 ## 1.3 (compared with 1.1)
@@ -54,7 +54,7 @@ Renamed to **Rehome** (the repository is rehome-launcher-for-car). The package i
 Note: the 1.1 release was built from a commit whose app version already said 1.2 inside, so the installed 1.1 APK shows "1.2" in Android's app info. This release is 1.3 (version code 8).
 
 - Start-up: black screen first, then the interface, then a fade-in once the map has had time to draw (no white tiles). Map background no longer flashes white in the dark theme.
-- Tesla-style speed glow: a wider, brighter light along the top and both sides of the map (accent colour normally, amber from 80 km/h, red from 120 km/h).
+- Speed glow: a wider, brighter light along the top and both sides of the map (accent colour normally, amber from 80 km/h, red from 120 km/h).
 - The bottom bar and the contacts bar are each one rounded bar (no separate tiles, no tile gap).
 - The play button in the YouTube widget is no longer hidden behind the vignette.
 - New shield bar: a black bar at the bottom of other apps with the 360 and primary-contact buttons and an adjustable angle; it blocks touches. The frame, shield bar and floating buttons each have a NetGuard-style exclusion list (Settings > Per-app rules). Needs Usage access.
